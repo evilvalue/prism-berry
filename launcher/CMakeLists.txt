@@ -1198,6 +1198,8 @@ if(BERRY_SOLO)
         berry/BerryConfig.cpp
         berry/BerryInstance.h
         berry/BerryInstance.cpp
+        berry/BerryPanel.h
+        berry/BerryPanel.cpp
         berry/BerryPackSync.h
         berry/BerryPackSync.cpp
     )

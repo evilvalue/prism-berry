@@ -46,6 +46,10 @@
 #include "ui/GuiUtil.h"
 #include "ui_MainWindow.h"
 
+#ifdef BERRY_SOLO
+#include "berry/BerryPanel.h"
+#endif
+
 #include <QDir>
 #include <QFileInfo>
 #include <QUrl>
@@ -474,6 +478,10 @@ void MainWindow::retranslateUi()
         if (action->toolTip().contains("%1"))
             action->setToolTip(action->toolTip().arg(BuildConfig.LAUNCHER_DISPLAYNAME));
     }
+
+#ifdef BERRY_SOLO
+    berry::installSoloUi(this);
+#endif
 }
 
 MainWindow::~MainWindow() {}
