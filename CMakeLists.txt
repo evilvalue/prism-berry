@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.25) # Required for features like `CMAKE_MSVC_DEBUG_INFORMATION_FORMAT`
 
 project(Launcher LANGUAGES C CXX)
+
+# BerryTrip is the single-server fork of Prism Launcher. Enabled by -DBERRY_SOLO=ON.
+option(BERRY_SOLO "Build the single-server BerryTrip launcher" OFF)
+
 if(APPLE)
     enable_language(OBJC OBJCXX)
 endif()
@@ -177,6 +181,9 @@ include(CTest)
 
 ######## Set URLs ########
 set(Launcher_NEWS_RSS_URL "https://prismlauncher.org/feed/feed.xml" CACHE STRING "URL to fetch Prism Launcher's news RSS feed from.")
+if(BERRY_SOLO)
+    set(Launcher_NEWS_OPEN_URL "https://evilvalue.github.io/berry/" CACHE STRING "URL that gets opened when the user clicks 'More News'" FORCE)
+endif()
 set(Launcher_NEWS_OPEN_URL "https://prismlauncher.org/news" CACHE STRING "URL that gets opened when the user clicks 'More News'")
 set(Launcher_WIKI_URL "https://prismlauncher.org/wiki/" CACHE STRING "URL that gets opened when the user clicks 'Launcher Help'")
 set(Launcher_HELP_URL "https://prismlauncher.org/wiki/help-pages/%1" CACHE STRING "URL (with arg %1 to be substituted with page-id) that gets opened when the user requests help in a dialog window")
@@ -184,9 +191,15 @@ set(Launcher_LOGIN_CALLBACK_URL "https://prismlauncher.org/successful-login" CAC
 set(Launcher_LEGACY_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" CACHE STRING "URL for legacy (<=1.5.2) FML Libraries.")
 
 ######## Set version numbers ########
-set(Launcher_VERSION_MAJOR 12)
-set(Launcher_VERSION_MINOR 0)
-set(Launcher_VERSION_PATCH 0)
+if(BERRY_SOLO)
+    set(Launcher_VERSION_MAJOR 0)
+    set(Launcher_VERSION_MINOR 3)
+    set(Launcher_VERSION_PATCH 0)
+else()
+    set(Launcher_VERSION_MAJOR 12)
+    set(Launcher_VERSION_MINOR 0)
+    set(Launcher_VERSION_PATCH 0)
+endif()
 
 set(Launcher_VERSION_NAME "${Launcher_VERSION_MAJOR}.${Launcher_VERSION_MINOR}.${Launcher_VERSION_PATCH}")
 set(Launcher_VERSION_NAME4 "${Launcher_VERSION_MAJOR}.${Launcher_VERSION_MINOR}.${Launcher_VERSION_PATCH}.0")
@@ -197,6 +210,9 @@ set(Launcher_BUILD_PLATFORM "unknown" CACHE STRING "A short string identifying t
 
 # Github repo URL with releases for updater
 set(Launcher_UPDATER_GITHUB_REPO "https://github.com/PrismLauncher/PrismLauncher" CACHE STRING "Base github URL for the updater.")
+if(BERRY_SOLO)
+    set(Launcher_UPDATER_GITHUB_REPO "https://github.com/evilvalue/prism-berry" CACHE STRING "Base github URL for the updater." FORCE)
+endif()
 
 # Name to help updater identify valid artifacts
 set(Launcher_BUILD_ARTIFACT "" CACHE STRING "Artifact name to help the updater identify valid artifacts.")
@@ -383,7 +399,11 @@ include(ECMQtDeclareLoggingCategory)
 
 ####################################### Program Info #######################################
 
-set(Launcher_APP_BINARY_NAME "prismlauncher" CACHE STRING "Name of the Launcher binary")
+if(BERRY_SOLO)
+    set(Launcher_APP_BINARY_NAME "berrytrip" CACHE STRING "Name of the Launcher binary" FORCE)
+else()
+    set(Launcher_APP_BINARY_NAME "prismlauncher" CACHE STRING "Name of the Launcher binary")
+endif()
 add_subdirectory(program_info)
 
 ####################################### Install layout #######################################

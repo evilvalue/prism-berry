@@ -69,6 +69,7 @@ constexpr auto SiteUrl = "https://evilvalue.github.io/berry/";
 constexpr auto TelegramUrl = "https://t.me/killberries";
 constexpr auto ReleasesUrl = "https://github.com/evilvalue/prism-berry/releases/latest";
 constexpr auto SourcesUrl = "https://github.com/evilvalue/prism-berry";
+constexpr auto UpstreamUrl = "https://github.com/PrismLauncher/PrismLauncher";
 
 class OverlayFilter : public QObject {
    public:
@@ -720,7 +721,26 @@ QWidget* Panel::buildAbout()
     addLink(tr("Telegram-канал"), QString::fromLatin1(TelegramUrl));
     addLink(tr("Релизы лаунчера"), QString::fromLatin1(ReleasesUrl));
     addLink(tr("Исходники (GPL-3.0)"), QString::fromLatin1(SourcesUrl));
+    addLink(tr("Prism Launcher — оригинал (GPL-3.0)"), QString::fromLatin1(UpstreamUrl));
     layout->addWidget(links);
+
+    auto* legal = card(content);
+    auto* legalLayout = new QVBoxLayout(legal);
+    legalLayout->setContentsMargins(18, 16, 18, 16);
+    legalLayout->setSpacing(6);
+    legalLayout->addWidget(caption(tr("ЛИЦЕНЗИЯ"), legal));
+    auto* legalText = new QLabel(
+        tr("BerryTrip — неофициальный форк Prism Launcher, распространяется по GNU GPL v3. "
+           "Исходный код этой сборки: github.com/evilvalue/prism-berry, ветка berry, тег v%1 — именно он соответствует "
+           "полученному файлу. © 2022-2026 Prism Launcher Contributors, © 2021-2022 PolyMC Contributors, "
+           "© 2012-2021 MultiMC Contributors, © 2026 BerryTrip.\n\n"
+           "Minecraft — торговая марка Mojang Studios. Проект не связан с Mojang и Microsoft.")
+            .arg(Config::version()),
+        legal);
+    legalText->setObjectName(QStringLiteral("berryDim"));
+    legalText->setWordWrap(true);
+    legalLayout->addWidget(legalText);
+    layout->addWidget(legal);
 
     auto* updateCard = card(content);
     auto* updateLayout = new QVBoxLayout(updateCard);

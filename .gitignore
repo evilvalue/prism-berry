@@ -67,3 +67,6 @@ flatbuild
 
 # Snap
 *.snap
+
+# Local code signing material (never commit private keys)
+/packaging/codesign/

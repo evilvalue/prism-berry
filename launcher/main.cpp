@@ -59,9 +59,11 @@ int main(int argc, char* argv[])
             Q_INIT_RESOURCE(multimc);
             Q_INIT_RESOURCE(backgrounds);
             Q_INIT_RESOURCE(documents);
-            Q_INIT_RESOURCE(prismlauncher);
 #ifdef BERRY_SOLO
+            Q_INIT_RESOURCE(berrytrip);
             Q_INIT_RESOURCE(berry);
+#else
+            Q_INIT_RESOURCE(prismlauncher);
 #endif
 
             Q_INIT_RESOURCE(pe_dark);
