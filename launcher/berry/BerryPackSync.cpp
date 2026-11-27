@@ -57,6 +57,7 @@ void PackSync::start()
     m_total = 0;
     m_completed = 0;
     m_inFlight = 0;
+    m_pendingMetafiles = 0;
     m_running = true;
 
     fetchIndex();
@@ -155,79 +156,87 @@ void PackSync::parseIndex(const QByteArray& data)
 void PackSync::scanLocalFiles()
 {
     const QString root = m_root;
+    const auto entries = m_entries;
 
-    // Only plain files are hashed off the UI thread; metafiles need TOML parsing
-    // and are handled in planMetafiles().
-    QHash<QString, Entry> wanted;
-    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
-        if (!it->metafile)
-            wanted.insert(it.key(), *it);
-    }
-
-    auto* watcher = new QFutureWatcher<QStringList>(this);
-    connect(watcher, &QFutureWatcher<QStringList>::finished, this, [this, watcher] {
-        const QStringList satisfied = watcher->result();
+    auto* watcher = new QFutureWatcher<Plan>(this);
+    connect(watcher, &QFutureWatcher<Plan>::finished, this, [this, watcher] {
+        const Plan plan = watcher->result();
         watcher->deleteLater();
         if (!m_running)
             return;
 
-        const QSet<QString> ok(satisfied.cbegin(), satisfied.cend());
-        for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
-            if (it->metafile)
-                continue;
-            if (ok.contains(it.key())) {
-                completeEntry(it.key());
-                continue;
-            }
-            Job job;
-            job.kind = Job::Kind::Blob;
-            job.entryPath = it.key();
-            job.diskPath = it.key();
-            job.url = Config::packFileUrl(it.key());
-            job.hashFormat = it->hashFormat;
-            job.hash = it->hash;
+        for (const QString& error : plan.errors)
+            fail(error);
+        for (const QString& path : plan.satisfied)
+            completeEntry(path);
+        for (const Job& job : plan.jobs)
             enqueue(job);
-        }
 
-        planMetafiles();
         startNextDownloads();
         maybeFinish();
     });
 
-    watcher->setFuture(QtConcurrent::run([root, wanted] {
-        QStringList satisfied;
-        for (auto it = wanted.cbegin(); it != wanted.cend(); ++it) {
-            const QString path = QDir(root).filePath(it.key());
-            if (hashFile(path, it->hashFormat) == it->hash)
-                satisfied.append(it.key());
-        }
-        return satisfied;
-    }));
+    // Hashing the whole game folder and every .pw.toml used to run on the UI
+    // thread, which froze the window for seconds on a large pack.
+    watcher->setFuture(QtConcurrent::run([root, entries] { return buildPlan(root, entries); }));
 }
 
-void PackSync::planMetafiles()
+PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Entry>& entries)
 {
-    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
+    Plan plan;
+    QSet<QString> queued;
+    const auto add = [&](const Job& job) {
+        if (queued.contains(job.diskPath))
+            return false;
+        queued.insert(job.diskPath);
+        plan.jobs.append(job);
+        return true;
+    };
+
+    for (auto it = entries.cbegin(); it != entries.cend(); ++it) {
+        if (it->metafile)
+            continue;
+
+        const QString path = QDir(root).filePath(it.key());
+        if (hashFile(path, it->hashFormat) == it->hash) {
+            plan.satisfied.append(it.key());
+            continue;
+        }
+
+        Job job;
+        job.kind = Job::Kind::Blob;
+        job.entryPath = it.key();
+        job.diskPath = it.key();
+        job.url = Config::packFileUrl(it.key());
+        job.hashFormat = it->hashFormat;
+        job.hash = it->hash;
+        add(job);
+    }
+
+    for (auto it = entries.cbegin(); it != entries.cend(); ++it) {
         if (!it->metafile)
             continue;
 
-        const QString localPath = QDir(m_root).filePath(it.key());
+        const QString localPath = QDir(root).filePath(it.key());
         const bool metafileOk = QFileInfo::exists(localPath) && hashFile(localPath, it->hashFormat) == it->hash;
 
         if (metafileOk) {
             Job payload;
             QString error;
             if (readMetafile(localPath, it.key(), &payload, &error)) {
-                const QString payloadPath = QDir(m_root).filePath(payload.diskPath);
+                const QString payloadPath = QDir(root).filePath(payload.diskPath);
                 if (hashFile(payloadPath, payload.hashFormat) == payload.hash) {
-                    completeEntry(it.key());
+                    plan.satisfied.append(it.key());
                     continue;
                 }
                 payload.entryPath = it.key();
-                enqueue(payload);
+                if (!add(payload)) {
+                    // The same payload is already queued by its own index entry.
+                    plan.satisfied.append(it.key());
+                }
                 continue;
             }
-            fail(QStringLiteral("%1: %2").arg(it.key(), error));
+            plan.errors.append(QStringLiteral("%1: %2").arg(it.key(), error));
         }
 
         Job job;
@@ -237,8 +246,10 @@ void PackSync::planMetafiles()
         job.url = Config::packFileUrl(it.key());
         job.hashFormat = it->hashFormat;
         job.hash = it->hash;
-        enqueue(job);
+        add(job);
     }
+
+    return plan;
 }
 
 void PackSync::enqueue(const Job& job)
@@ -337,21 +348,52 @@ void PackSync::onReplyFinished(QNetworkReply* reply, const Job& job, QSaveFile* 
 
 void PackSync::onMetafileInstalled(const Job& job, const QString& localPath)
 {
-    Job payload;
-    QString error;
-    if (!readMetafile(localPath, job.diskPath, &payload, &error)) {
-        fail(QStringLiteral("%1: %2").arg(job.diskPath, error));
-        completeEntry(job.entryPath);
-        return;
-    }
+    ++m_pendingMetafiles;
+    const QString root = m_root;
 
-    payload.entryPath = job.entryPath;
-    if (m_queuedPaths.contains(payload.diskPath)) {
-        // Another metafile already queued the same payload; still account for this entry.
-        completeEntry(job.entryPath);
-        return;
-    }
-    enqueue(payload);
+    auto* watcher = new QFutureWatcher<MetafileResult>(this);
+    connect(watcher, &QFutureWatcher<MetafileResult>::finished, this, [this, watcher, job] {
+        const MetafileResult result = watcher->result();
+        watcher->deleteLater();
+        if (m_pendingMetafiles > 0)
+            --m_pendingMetafiles;
+        if (!m_running)
+            return;
+
+        if (!result.ok) {
+            fail(QStringLiteral("%1: %2").arg(job.diskPath, result.error));
+            completeEntry(job.entryPath);
+        } else if (result.payloadReady) {
+            completeEntry(job.entryPath);
+        } else if (m_queuedPaths.contains(result.payload.diskPath)) {
+            // Another metafile already queued the same payload; still account for this entry.
+            completeEntry(job.entryPath);
+        } else {
+            enqueue(result.payload);
+        }
+
+        startNextDownloads();
+        maybeFinish();
+    });
+
+    // Parsing a downloaded metafile and hashing its jar are also file work;
+    // keep them off the UI thread.
+    watcher->setFuture(QtConcurrent::run([root, localPath, job] {
+        MetafileResult result;
+        Job payload;
+        QString error;
+        if (!readMetafile(localPath, job.diskPath, &payload, &error)) {
+            result.error = error;
+            return result;
+        }
+
+        payload.entryPath = job.entryPath;
+        result.ok = true;
+        result.payload = payload;
+        const QString payloadPath = QDir(root).filePath(payload.diskPath);
+        result.payloadReady = QFileInfo::exists(payloadPath) && hashFile(payloadPath, payload.hashFormat) == payload.hash;
+        return result;
+    }));
 }
 
 void PackSync::completeEntry(const QString& entryPath)
@@ -366,7 +408,7 @@ void PackSync::completeEntry(const QString& entryPath)
 
 void PackSync::maybeFinish()
 {
-    if (!m_running || !m_queue.isEmpty() || m_inFlight > 0)
+    if (!m_running || !m_queue.isEmpty() || m_inFlight > 0 || m_pendingMetafiles > 0)
         return;
 
     m_running = false;

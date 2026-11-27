@@ -20,6 +20,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFont>
+#include <QFutureWatcher>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -53,6 +54,7 @@
 #include <QToolBar>
 #include <QUrl>
 #include <QVBoxLayout>
+#include <QtConcurrent>
 
 #include "Application.h"
 #include "LaunchMode.h"
@@ -79,7 +81,7 @@ namespace berry {
 namespace {
 
 constexpr auto SiteUrl = "https://evilvalue.github.io/berry/";
-constexpr auto TelegramUrl = "https://t.me/killberries";
+constexpr auto TelegramUrl = "https://t.me/killberriesbot";
 constexpr auto ReleasesUrl = "https://github.com/evilvalue/prism-berry/releases/latest";
 constexpr auto SourcesUrl = "https://github.com/evilvalue/prism-berry";
 constexpr auto UpstreamUrl = "https://github.com/PrismLauncher/PrismLauncher";
@@ -432,7 +434,11 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     m_shaders->setChecked(Tweaks::shadersEnabled());
     m_loading = false;
 
-    connect(m_instance, &BaseInstance::runningStatusChanged, this, [this] { refreshLaunch(); });
+    connect(m_instance, &BaseInstance::runningStatusChanged, this, [this] {
+        refreshLaunch();
+        if (!m_instance->isRunning())
+            tryAutoInstall();
+    });
 
     m_pollTimer = new QTimer(this);
     m_pollTimer->setInterval(2000);
@@ -496,6 +502,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
         if (m_aboutUpdate)
             m_aboutUpdate->hide();
         m_updateReady = false;
+        m_autoInstallPending = false;
         if (m_aboutStatus) {
             m_aboutStatus->setText(tr("Установлена последняя версия: %1").arg(version));
             m_aboutStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
@@ -508,6 +515,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
                 m_updatePageUrl = releasePage.toString();
                 m_updateCanAuto = !installerUrl.isEmpty();
                 m_updateReady = false;
+                m_autoInstallPending = m_updateCanAuto;
                 if (m_updateBanner) {
                     m_updateBanner->show();
                     m_updateText->setText(tr("Доступно обновление BerryTrip %1.").arg(version));
@@ -521,11 +529,14 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
                     m_aboutUpdate->show();
                 }
                 if (m_aboutStatus) {
-                    m_aboutStatus->setText(tr("Доступна версия %1.").arg(version));
+                    m_aboutStatus->setText(tr("Доступна версия %1 — скачиваю автоматически.").arg(version));
                     m_aboutStatus->setStyleSheet(QStringLiteral("color:#FF5D86;"));
                 }
+                if (m_updateCanAuto)
+                    m_updater->download();
             });
     connect(m_updater, &Updater::checkFailed, this, [this](const QString& error) {
+        m_autoInstallPending = false;
         if (m_updateBanner)
             m_updateBanner->hide();
         if (m_aboutUpdate)
@@ -561,9 +572,10 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     connect(m_updater, &Updater::readyToInstall, this, [this](const QString&) {
         m_updateReady = true;
         m_updateCanAuto = true;
+        m_autoInstallPending = true;
         if (m_updateBanner) {
             m_updateBanner->show();
-            m_updateText->setText(tr("Обновление %1 загружено и проверено.").arg(m_updateVersion));
+            m_updateText->setText(tr("Обновление %1 загружено и проверено. Установлю автоматически…").arg(m_updateVersion));
             m_updateButton->setText(tr("Установить"));
             m_updateButton->setEnabled(true);
             m_updateProgress->hide();
@@ -574,9 +586,11 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
             m_aboutUpdate->show();
         }
         if (m_aboutStatus)
-            m_aboutStatus->setText(tr("Можно установить обновление %1.").arg(m_updateVersion));
+            m_aboutStatus->setText(tr("Обновление %1 скачано — установлю автоматически.").arg(m_updateVersion));
+        QTimer::singleShot(1500, this, &Panel::tryAutoInstall);
     });
     connect(m_updater, &Updater::failed, this, [this](const QString& error) {
+        m_autoInstallPending = false;
         if (m_updateBanner) {
             m_updateBanner->show();
             m_updateText->setText(error);
@@ -857,10 +871,15 @@ QWidget* Panel::buildAccount()
 
     auto* secondary = new QHBoxLayout;
     secondary->setSpacing(10);
-    m_openTelegram = button(tr("Открыть Telegram"), loginCard);
+    m_openTelegram = button(tr("Скопировать ссылку"), loginCard);
     connect(m_openTelegram, &QPushButton::clicked, this, [this] {
-        m_auth->openPendingLink();
-        m_authStatus->setText(tr("Telegram открыт — нажми Start в боте."));
+        const QString link = m_auth->pendingLink();
+        if (link.isEmpty()) {
+            m_authStatus->setText(tr("Ссылка ещё не получена — начни вход заново."));
+            return;
+        }
+        QApplication::clipboard()->setText(link);
+        m_authStatus->setText(tr("Ссылка скопирована — открой её в Telegram или браузере."));
     });
     m_logout = button(tr("Выйти"), loginCard, QStringLiteral("berryGhost"));
     connect(m_logout, &QPushButton::clicked, this, [this] {
@@ -1464,7 +1483,7 @@ QWidget* Panel::buildAbout()
         linksLayout->addWidget(b);
     };
     addLink(tr("Сайт сборки"), QString::fromLatin1(SiteUrl));
-    addLink(tr("Telegram-канал"), QString::fromLatin1(TelegramUrl));
+    addLink(tr("Telegram-бот"), QString::fromLatin1(TelegramUrl));
     addLink(tr("Релизы лаунчера"), QString::fromLatin1(ReleasesUrl));
     addLink(tr("Исходники (GPL-3.0)"), QString::fromLatin1(SourcesUrl));
     addLink(tr("Prism Launcher — оригинал (GPL-3.0)"), QString::fromLatin1(UpstreamUrl));
@@ -1551,7 +1570,7 @@ void Panel::refreshAuth()
 
     if (pending) {
         m_login->setText(tr("Открыть Telegram"));
-        m_openTelegram->setVisible(false);
+        m_openTelegram->setVisible(true);
         if (!m_pollTimer->isActive())
             m_pollTimer->start();
     } else {
@@ -1576,7 +1595,7 @@ void Panel::onAuthClicked()
         if (m_auth->openPendingLink())
             m_authStatus->setText(tr("Открываю Telegram — нажми Start в боте."));
         else
-            m_authStatus->setText(tr("Ссылка истекла — войди заново."));
+            m_authStatus->setText(tr("Не удалось открыть Telegram — скопируй ссылку кнопкой ниже."));
         return;
     }
 
@@ -1634,13 +1653,28 @@ void Panel::startSync()
         });
         connect(m_sync, &PackSync::finished, this, [this](bool ok, const QString& error) {
             m_progress->hide();
-            m_syncFinished = true;
             m_retry->setVisible(!ok);
-            m_status->setText(ok ? tr("Сборка готова") : tr("Не удалось обновить: %1").arg(error));
-            if (ok)
-                Tweaks::applyAll();
-            refreshLaunch();
-            refreshDiagnostics();
+            if (!ok) {
+                m_syncFinished = true;
+                m_status->setText(tr("Не удалось обновить: %1").arg(error));
+                refreshLaunch();
+                refreshDiagnostics();
+                return;
+            }
+
+            // Moving optional mods and rewriting configs can touch a lot of
+            // files; do it after the window has painted the completed sync.
+            m_status->setText(tr("Применяю настройки…"));
+            auto* apply = new QFutureWatcher<void>(this);
+            connect(apply, &QFutureWatcher<void>::finished, this, [this, apply] {
+                apply->deleteLater();
+                m_syncFinished = true;
+                m_status->setText(tr("Сборка готова"));
+                refreshLaunch();
+                refreshDiagnostics();
+                refreshSkins();
+            });
+            apply->setFuture(QtConcurrent::run([] { Tweaks::applyAll(); }));
         });
     }
 
@@ -1744,6 +1778,7 @@ void Panel::installUpdate()
                 m_aboutStatus->setText(message);
             return;
         }
+        m_autoInstallPending = false;
         QString error;
         if (!m_updater->install(&error)) {
             if (m_updateText)
@@ -1762,6 +1797,24 @@ void Panel::installUpdate()
         return;
     }
     m_updater->download();
+}
+
+void Panel::tryAutoInstall()
+{
+    if (!m_autoInstallPending || !m_updateReady)
+        return;
+
+    if (m_instance && m_instance->isRunning()) {
+        const QString message = tr("Обновление установится после закрытия Minecraft.");
+        if (m_updateText)
+            m_updateText->setText(message);
+        if (m_aboutStatus)
+            m_aboutStatus->setText(message);
+        return;
+    }
+
+    m_autoInstallPending = false;
+    installUpdate();
 }
 
 void Panel::onPlay()

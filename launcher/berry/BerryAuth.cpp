@@ -9,6 +9,8 @@
 
 #include "berry/BerryAuth.h"
 
+#include <QApplication>
+#include <QClipboard>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
@@ -19,6 +21,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QSettings>
@@ -108,8 +111,15 @@ void TelegramAuth::start(const QString& nick)
     }
 
     if (pending()) {
-        emit message(tr("Вход уже начат — подтвердите его в Telegram."), false);
-        openPendingLink();
+        if (!m_pendingNick.isEmpty() && clean.compare(m_pendingNick, Qt::CaseInsensitive) != 0) {
+            emit message(tr("Уже открыт вход для %1. Заверши его или выйди и начни снова.").arg(m_pendingNick), true);
+            return;
+        }
+        if (!openPendingLink()) {
+            emit message(tr("Не удалось открыть Telegram. Скопируй ссылку кнопкой ниже."), true);
+            return;
+        }
+        emit message(tr("Telegram открыт — нажмите Start в боте."), false);
         return;
     }
 
@@ -149,9 +159,16 @@ void TelegramAuth::requestLink(const QString& nick)
         const QString id = json.value(QStringLiteral("id")).toString();
         const QString secret = json.value(QStringLiteral("secret")).toString();
         const QString link = json.value(QStringLiteral("link")).toString();
-        const qint64 expires = static_cast<qint64>(json.value(QStringLiteral("expires")).toDouble());
+        qint64 expires = static_cast<qint64>(json.value(QStringLiteral("expires")).toDouble());
+        // The bot API has used both Unix seconds and milliseconds for this
+        // field; accept either instead of declaring a fresh link expired.
+        if (expires > 0 && expires < 1000000000000LL)
+            expires *= 1000;
 
-        if (id.isEmpty() || secret.isEmpty() || !link.startsWith(QLatin1String("https://t.me/")) ||
+        const QUrl botLink(link);
+        if (id.isEmpty() || secret.isEmpty() || !botLink.isValid() ||
+            (botLink.scheme() != QLatin1String("https") && botLink.scheme() != QLatin1String("http")) ||
+            botLink.host().compare(QLatin1String("t.me"), Qt::CaseInsensitive) != 0 ||
             expires <= QDateTime::currentMSecsSinceEpoch()) {
             emit message(tr("Сервер выдал некорректную ссылку. Попробуйте ещё раз."), true);
             return;
@@ -171,8 +188,12 @@ void TelegramAuth::requestLink(const QString& nick)
         store.setValue(QStringLiteral("auth/request_until"), expires);
         store.sync();
 
-        openTelegramLink(link);
-        emit message(tr("Telegram открыт — нажмите Start в боте."), false);
+        if (openTelegramLink(link)) {
+            emit message(tr("Telegram открыт — нажмите Start в боте."), false);
+        } else {
+            QApplication::clipboard()->setText(link);
+            emit message(tr("Не удалось открыть Telegram. Ссылка скопирована — открой её вручную."), true);
+        }
     });
 }
 
@@ -265,8 +286,7 @@ bool TelegramAuth::openPendingLink()
 {
     if (!pending() || m_pendingLink.isEmpty())
         return false;
-    openTelegramLink(m_pendingLink);
-    return true;
+    return openTelegramLink(m_pendingLink);
 }
 
 bool TelegramAuth::openTelegramLink(const QString& link)
@@ -275,34 +295,49 @@ bool TelegramAuth::openTelegramLink(const QString& link)
     if (!https.isValid())
         return false;
 
+    const QString host = https.host().toLower();
+    if (host != QLatin1String("t.me") && host != QLatin1String("telegram.me"))
+        return QDesktopServices::openUrl(https);
+
+    // "killberriesbot?start=..." -> bot name without a trailing slash.
+    const QString path = https.path().mid(1);
+    const QString bot = path.section(QLatin1Char('/'), 0, 0);
+    if (bot.isEmpty())
+        return QDesktopServices::openUrl(https);
+
+    const QUrlQuery query(https);
+    QString startToken = query.queryItemValue(QStringLiteral("start"));
+    if (startToken.isEmpty() && path.contains(QLatin1Char('/')))
+        startToken = path.section(QLatin1Char('/'), 1, 1);
+
+    QUrl deep(QStringLiteral("tg://resolve"));
+    QUrlQuery deepQuery;
+    deepQuery.addQueryItem(QStringLiteral("domain"), bot);
+    if (!startToken.isEmpty())
+        deepQuery.addQueryItem(QStringLiteral("start"), startToken);
+    deep.setQuery(deepQuery);
+
 #ifdef Q_OS_WIN
+    // Telegram Desktop requires the double dash before its URI argument.
+    // Starting the app directly keeps the full ?start= token; the URL handler
+    // used by QDesktopServices sometimes passes only the domain.
     const QString roaming = qEnvironmentVariable("APPDATA");
     const QString local = qEnvironmentVariable("LOCALAPPDATA");
-    const bool desktop = QFileInfo::exists(roaming + QStringLiteral("/Telegram Desktop/tdata")) ||
-                         QFileInfo::exists(local + QStringLiteral("/Programs/Telegram Desktop/Telegram.exe")) ||
-                         QFileInfo::exists(QStringLiteral("C:/Program Files/Telegram Desktop/Telegram.exe")) ||
-                         QFileInfo::exists(QStringLiteral("C:/Program Files (x86)/Telegram Desktop/Telegram.exe"));
-#else
-    const bool desktop = false;
+    const QStringList candidates{
+        local + QStringLiteral("/Programs/Telegram Desktop/Telegram.exe"),
+        roaming + QStringLiteral("/Telegram Desktop/Telegram.exe"),
+        QStringLiteral("C:/Program Files/Telegram Desktop/Telegram.exe"),
+        QStringLiteral("C:/Program Files (x86)/Telegram Desktop/Telegram.exe"),
+    };
+    for (const QString& executable : candidates) {
+        if (executable.isEmpty() || !QFileInfo::exists(executable))
+            continue;
+        if (QProcess::startDetached(executable, { QStringLiteral("--"), deep.toString(QUrl::FullyEncoded) }))
+            return true;
+    }
 #endif
 
-    const QString host = https.host().toLower();
-    if (desktop && (host == QLatin1String("t.me") || host == QLatin1String("telegram.me"))) {
-        const QString bot = https.path().mid(1);
-        const QUrlQuery query(https);
-        if (!bot.isEmpty()) {
-            QUrl deep(QStringLiteral("tg://resolve"));
-            QUrlQuery deepQuery;
-            deepQuery.addQueryItem(QStringLiteral("domain"), bot);
-            const QString startToken = query.queryItemValue(QStringLiteral("start"));
-            if (!startToken.isEmpty())
-                deepQuery.addQueryItem(QStringLiteral("start"), startToken);
-            deep.setQuery(deepQuery);
-            if (QDesktopServices::openUrl(deep))
-                return true;
-        }
-    }
-
+    // No desktop client: the t.me URL is canonical and keeps ?start= intact.
     return QDesktopServices::openUrl(https);
 }
 

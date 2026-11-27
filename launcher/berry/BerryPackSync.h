@@ -17,6 +17,7 @@
 #include <QString>
 #include <QStringList>
 #include <QUrl>
+#include <QVector>
 
 class QCryptographicHash;
 class QNetworkReply;
@@ -41,17 +42,6 @@ class PackSync : public QObject {
     void abort();
     bool isRunning() const { return m_running; }
 
-   signals:
-    void progress(int completed, int total, const QString& currentFile);
-    void finished(bool ok, const QString& error);
-
-   private:
-    struct Entry {
-        QString hashFormat = QStringLiteral("sha256");
-        QByteArray hash;
-        bool metafile = false;
-    };
-
     struct Job {
         enum class Kind { Blob, Metafile };
 
@@ -65,10 +55,35 @@ class PackSync : public QObject {
         QByteArray hash;
     };
 
+    /// Off-thread result of hashing the local game folder and planning downloads.
+    struct Plan {
+        QStringList satisfied;
+        QVector<Job> jobs;
+        QStringList errors;
+    };
+
+    struct MetafileResult {
+        bool ok = false;
+        bool payloadReady = false;
+        Job payload;
+        QString error;
+    };
+
+   signals:
+    void progress(int completed, int total, const QString& currentFile);
+    void finished(bool ok, const QString& error);
+
+   private:
+    struct Entry {
+        QString hashFormat = QStringLiteral("sha256");
+        QByteArray hash;
+        bool metafile = false;
+    };
+
     void fetchIndex();
     void parseIndex(const QByteArray& data);
     void scanLocalFiles();
-    void planMetafiles();
+    static Plan buildPlan(const QString& root, const QHash<QString, Entry>& entries);
     void enqueue(const Job& job);
     void startNextDownloads();
     void startDownload(const Job& job);
@@ -92,6 +107,7 @@ class PackSync : public QObject {
     int m_total = 0;
     int m_completed = 0;
     int m_inFlight = 0;
+    int m_pendingMetafiles = 0;
     bool m_running = false;
 };
 

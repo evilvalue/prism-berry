@@ -66,6 +66,7 @@ class Panel : public QWidget {
     void applyTweaks(const QString& note);
     void checkUpdates();
     void installUpdate();
+    void tryAutoInstall();
     bool signedIn() const;
     void goToPage(int index);
 
@@ -135,6 +136,7 @@ class Panel : public QWidget {
     QString m_updatePageUrl;
     bool m_updateReady = false;
     bool m_updateCanAuto = false;
+    bool m_autoInstallPending = false;
 };
 
 /// Hides Prism's instance manager and puts the BerryTrip UI in its place.
