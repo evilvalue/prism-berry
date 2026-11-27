@@ -17,13 +17,15 @@ class QMainWindow;
 class QProgressBar;
 class QPushButton;
 class QSpinBox;
+class QTimer;
 class MinecraftInstance;
 
 namespace berry {
 
 class PackSync;
+class TelegramAuth;
 
-/// The whole user interface of the fork: account, memory, Java and a Play button.
+/// The whole user interface of the fork: Telegram login, memory, Java and Play.
 class Panel : public QWidget {
     Q_OBJECT
 
@@ -33,19 +35,25 @@ class Panel : public QWidget {
    private:
     void buildUi();
     void loadSettings();
-    void refreshAccount();
+    void refreshAuth();
     void refreshLaunchButton();
     void startSync();
     void onPlayClicked();
+    void onAuthClicked();
     void onBrowseJava();
     void onJavaEdited();
     void onMemoryChanged(int gigabytes);
+    bool signedIn() const;
 
     MinecraftInstance* m_instance = nullptr;
     PackSync* m_sync = nullptr;
+    TelegramAuth* m_auth = nullptr;
+    QTimer* m_pollTimer = nullptr;
     bool m_syncFinished = false;
 
     QLabel* m_accountLabel = nullptr;
+    QPushButton* m_authButton = nullptr;
+    QLabel* m_authStatus = nullptr;
     QSpinBox* m_memory = nullptr;
     QLineEdit* m_javaPath = nullptr;
     QProgressBar* m_progress = nullptr;

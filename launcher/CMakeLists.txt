@@ -1194,6 +1194,8 @@ if(BERRY_SOLO)
     set(LAUNCHER_SOURCES
         ${LAUNCHER_SOURCES}
 
+        berry/BerryAuth.h
+        berry/BerryAuth.cpp
         berry/BerryConfig.h
         berry/BerryConfig.cpp
         berry/BerryInstance.h

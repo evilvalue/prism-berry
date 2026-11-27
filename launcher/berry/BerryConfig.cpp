@@ -22,6 +22,7 @@ constexpr auto InstanceId = "BerryTrip";
 constexpr auto ServerHost = "135.181.126.167";
 constexpr quint16 ServerPort = 25737;
 constexpr auto PackBaseUrl = "https://evilvalue.github.io/berry/";
+constexpr auto AuthApiUrl = "http://135.181.126.167:25712";
 }  // namespace
 
 QString Config::instanceId()
@@ -47,6 +48,11 @@ quint16 Config::serverPort()
 QString Config::serverAddress()
 {
     return QStringLiteral("%1:%2").arg(serverHost()).arg(serverPort());
+}
+
+QString Config::authApi()
+{
+    return QString::fromLatin1(AuthApiUrl);
 }
 
 QUrl Config::packIndexUrl()

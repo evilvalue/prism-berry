@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QFrame>
 #include <QHBoxLayout>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMainWindow>
@@ -24,16 +25,17 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 
 #include "Application.h"
 #include "LaunchMode.h"
+#include "berry/BerryAuth.h"
 #include "berry/BerryConfig.h"
 #include "berry/BerryInstance.h"
 #include "berry/BerryPackSync.h"
 #include "minecraft/MinecraftInstance.h"
-#include "minecraft/auth/AccountList.h"
 #include "minecraft/launch/MinecraftTarget.h"
 #include "settings/SettingsObject.h"
 
@@ -75,6 +77,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     setObjectName(QStringLiteral("berryPanel"));
     setAttribute(Qt::WA_StyledBackground, true);
 
+    m_auth = new TelegramAuth(this);
     buildUi();
 
     QString error;
@@ -87,12 +90,23 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     }
 
     loadSettings();
-
     connect(m_instance, &BaseInstance::runningStatusChanged, this, [this] { refreshLaunchButton(); });
-    connect(APPLICATION->accounts(), &AccountList::defaultAccountChanged, this, [this] { refreshAccount(); });
-    connect(APPLICATION->accounts(), &AccountList::listChanged, this, [this] { refreshAccount(); });
 
-    refreshAccount();
+    m_pollTimer = new QTimer(this);
+    m_pollTimer->setInterval(2000);
+    connect(m_pollTimer, &QTimer::timeout, m_auth, &TelegramAuth::poll);
+
+    connect(m_auth, &TelegramAuth::message, this, [this](const QString& text, bool failure) {
+        m_authStatus->setText(text);
+        m_authStatus->setStyleSheet(failure ? QStringLiteral("color: #d24b4b;") : QStringLiteral("color: palette(placeholder-text);"));
+        refreshAuth();
+    });
+    connect(m_auth, &TelegramAuth::authenticated, this, [this](const QString& nick) {
+        TelegramAuth::useOfflineAccount(nick);
+        refreshAuth();
+    });
+
+    refreshAuth();
     refreshLaunchButton();
     startSync();
 }
@@ -120,19 +134,26 @@ void Panel::buildUi()
     form->setContentsMargins(20, 20, 20, 20);
     form->setSpacing(14);
 
-    // Account
+    // Account: Telegram only, no Microsoft accounts anywhere in this build.
     {
         auto* row = new QHBoxLayout();
         auto* caption = new QLabel(tr("Аккаунт"), card);
         caption->setMinimumWidth(90);
         m_accountLabel = new QLabel(card);
-        auto* change = new QPushButton(tr("Сменить"), card);
-        change->setAutoDefault(false);
-        connect(change, &QPushButton::clicked, this, [this] { APPLICATION->ShowGlobalSettings(this, QStringLiteral("accounts")); });
+        m_accountLabel->setObjectName(QStringLiteral("berryAccount"));
+        m_authButton = new QPushButton(tr("Войти через Telegram"), card);
+        m_authButton->setAutoDefault(false);
+        connect(m_authButton, &QPushButton::clicked, this, &Panel::onAuthClicked);
         row->addWidget(caption);
         row->addWidget(m_accountLabel, 1);
-        row->addWidget(change);
+        row->addWidget(m_authButton);
         form->addLayout(row);
+
+        m_authStatus = new QLabel(card);
+        m_authStatus->setObjectName(QStringLiteral("berryAuthStatus"));
+        m_authStatus->setWordWrap(true);
+        m_authStatus->setContentsMargins(98, 0, 0, 0);
+        form->addWidget(m_authStatus);
     }
 
     // Memory
@@ -204,6 +225,8 @@ void Panel::buildUi()
 #berryTitle { font-size: 26px; font-weight: 600; }
 #berrySubtitle { color: palette(placeholder-text); font-size: 13px; }
 #berryStatus { color: palette(placeholder-text); font-size: 12px; }
+#berryAuthStatus { color: palette(placeholder-text); font-size: 12px; }
+#berryAccount { font-weight: 600; }
 #berryCard { background: palette(base); border: 1px solid palette(mid); border-radius: 10px; }
 #berryPlay { font-size: 16px; font-weight: 600; padding: 10px 28px; }
 )"));
@@ -258,15 +281,78 @@ void Panel::onBrowseJava()
     onJavaEdited();
 }
 
-void Panel::refreshAccount()
+bool Panel::signedIn() const
 {
-    auto* accounts = APPLICATION->accounts();
-    const auto account = accounts ? accounts->defaultAccount() : nullptr;
+    return m_auth->tokenState() == TelegramAuth::TokenState::Ok;
+}
 
-    if (!account)
-        m_accountLabel->setText(tr("Не выбран — нажмите «Сменить»"));
-    else
-        m_accountLabel->setText(account->profileName());
+void Panel::refreshAuth()
+{
+    const auto state = m_auth->tokenState();
+    const bool pending = m_auth->pending();
+
+    if (state == TelegramAuth::TokenState::Ok) {
+        const QString nick = m_auth->tokenNick().isEmpty() ? m_auth->nick() : m_auth->tokenNick();
+        TelegramAuth::useOfflineAccount(nick);
+        m_accountLabel->setText(nick);
+        m_authButton->setText(tr("Выйти"));
+    } else if (pending) {
+        m_accountLabel->setText(m_auth->nick().isEmpty() ? tr("Ожидание Telegram") : m_auth->nick());
+        m_authButton->setText(tr("Открыть Telegram"));
+    } else {
+        m_accountLabel->setText(tr("Вход не выполнен"));
+        m_authButton->setText(tr("Войти через Telegram"));
+        switch (state) {
+            case TelegramAuth::TokenState::Expired:
+                m_authStatus->setText(tr("Сессия истекла — войдите снова."));
+                break;
+            case TelegramAuth::TokenState::OtherNick:
+                m_authStatus->setText(tr("Токен выдан другому нику — войдите под этим ником."));
+                break;
+            case TelegramAuth::TokenState::Broken:
+                m_authStatus->setText(tr("Файл токена повреждён — войдите снова."));
+                break;
+            case TelegramAuth::TokenState::Ok:
+            case TelegramAuth::TokenState::None:
+                if (m_authStatus->text().isEmpty())
+                    m_authStatus->setText(tr("Вход только через бота — Microsoft-аккаунт не нужен."));
+                break;
+        }
+    }
+
+    if (m_pollTimer) {
+        if (pending && !m_pollTimer->isActive())
+            m_pollTimer->start();
+        else if (!pending && m_pollTimer->isActive())
+            m_pollTimer->stop();
+    }
+
+    refreshLaunchButton();
+}
+
+void Panel::onAuthClicked()
+{
+    if (signedIn()) {
+        m_auth->logout();
+        refreshAuth();
+        return;
+    }
+
+    if (m_auth->pending()) {
+        m_auth->openPendingLink();
+        refreshAuth();
+        return;
+    }
+
+    bool accepted = false;
+    const QString nick = QInputDialog::getText(this, tr("Вход через Telegram"), tr("Ник в Minecraft:"), QLineEdit::Normal,
+                                               m_auth->nick(), &accepted)
+                             .trimmed();
+    if (!accepted || nick.isEmpty())
+        return;
+
+    m_authStatus->setText(tr("Запрашиваю ссылку у сервера…"));
+    m_auth->start(nick);
 }
 
 void Panel::refreshLaunchButton()
@@ -283,7 +369,7 @@ void Panel::refreshLaunchButton()
     }
 
     m_play->setText(tr("Играть"));
-    m_play->setEnabled(m_syncFinished);
+    m_play->setEnabled(m_syncFinished && signedIn());
 }
 
 void Panel::startSync()
@@ -322,6 +408,12 @@ void Panel::onPlayClicked()
 {
     if (!m_instance || m_instance->isRunning())
         return;
+
+    if (!signedIn()) {
+        m_authStatus->setText(tr("Сначала войдите через Telegram-бота."));
+        m_authStatus->setStyleSheet(QStringLiteral("color: #d24b4b;"));
+        return;
+    }
 
     auto target = std::make_shared<MinecraftTarget>(MinecraftTarget::parse(Config::serverAddress(), false));
     if (!APPLICATION->launch(m_instance, LaunchMode::Normal, target))

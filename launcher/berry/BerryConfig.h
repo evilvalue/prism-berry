@@ -27,6 +27,9 @@ class Config {
     /// "host:port", the form Minecraft's --server/--quickPlayMultiplayer expects.
     static QString serverAddress();
 
+    /// berryauth server: the Telegram bot issues the login token here.
+    static QString authApi();
+
     /// packwiz index (HTTPS manifest with a sha256 for every file).
     static QUrl packIndexUrl();
     /// Absolute URL of a file listed in the index.
