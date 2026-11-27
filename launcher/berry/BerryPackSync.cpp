@@ -58,8 +58,7 @@ bool isPlayerOwnedPath(const QString& path)
         QStringLiteral("config/"),       QStringLiteral("defaultconfigs/"),
         QStringLiteral("saves/"),        QStringLiteral("screenshots/"),
         QStringLiteral("logs/"),         QStringLiteral("crash-reports/"),
-        QStringLiteral("local/"),        QStringLiteral("shaderpacks/"),
-        QStringLiteral("Distant_Horizons_server_data/"),
+        QStringLiteral("local/"),        QStringLiteral("Distant_Horizons_server_data/"),
     };
     for (const QString& prefix : prefixes) {
         if (lower.startsWith(prefix))
