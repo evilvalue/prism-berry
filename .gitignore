@@ -28,9 +28,10 @@ compile_commands.json
 build
 /build-*
 
-# BerryTrip local toolchain (Qt installed by aqt) and build logs
+# BerryTrip local toolchain (Qt installed by aqt), build logs and packaging output
 /.tools
 /logs
+/dist
 
 # Install dirs
 install
