@@ -11,7 +11,10 @@
 
 #include <QColor>
 #include <QFont>
+#include <QIcon>
+#include <QPixmap>
 #include <QString>
+#include <QStringList>
 
 class QWidget;
 
@@ -51,6 +54,11 @@ void init();
 QString family();
 QFont regular(int pixelSize);
 QFont semiBold(int pixelSize);
+
+/// Draws a `#`-glyph on an integer pixel grid, with no antialiasing.
+QPixmap pixelPixmap(const QStringList& glyph, const QColor& color, int scale = 1);
+/// The same glyph as a crisp icon with 1x/2x/3x variants for scaled displays.
+QIcon pixelIcon(const QStringList& glyph, const QColor& color);
 
 /// Applies the pixel look to the panel and everything inside it.
 void apply(QWidget* root);

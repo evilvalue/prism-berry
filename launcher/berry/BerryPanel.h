@@ -124,6 +124,7 @@ class Panel : public QWidget {
     QString m_pickedSkin;
 
     QVector<QLabel*> m_diagValues;
+    QLabel* m_diagStatus = nullptr;
     QLabel* m_aboutStatus = nullptr;
 
     Updater* m_updater = nullptr;

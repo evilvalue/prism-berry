@@ -24,6 +24,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QIcon>
 #include <QImage>
 #include <QImageReader>
 #include <QJsonDocument>
@@ -129,6 +130,394 @@ class PopupFilter : public QObject {
     Panel* m_panel;
 };
 
+// --------------------------------------------------------------- pixel icons
+// Every glyph is a 16x16 grid drawn at 1:1. Shapes use whole pixels only:
+// no antialiasing, no half-pixel outlines, one light source (top-left).
+
+const QStringList& gHome()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".......##......."),
+                                QStringLiteral("......####......"), QStringLiteral(".....######....."),
+                                QStringLiteral("....########...."), QStringLiteral("...##########..."),
+                                QStringLiteral("..############.."), QStringLiteral(".....######....."),
+                                QStringLiteral(".....#....#....."), QStringLiteral(".....#.##.#....."),
+                                QStringLiteral(".....#.##.#....."), QStringLiteral(".....#....#....."),
+                                QStringLiteral(".....######....."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gAccount()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("......####......"),
+                                QStringLiteral(".....######....."), QStringLiteral(".....######....."),
+                                QStringLiteral(".....######....."), QStringLiteral("......####......"),
+                                QStringLiteral("................"), QStringLiteral("....########...."),
+                                QStringLiteral("..############.."), QStringLiteral("..###......###.."),
+                                QStringLiteral("..###......###.."), QStringLiteral("..###......###.."),
+                                QStringLiteral("..###......###.."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gSkin()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("....##....##...."),
+                                QStringLiteral("...####..####..."), QStringLiteral("..############.."),
+                                QStringLiteral(".##############."), QStringLiteral(".###........###."),
+                                QStringLiteral("....##....##...."), QStringLiteral("....##....##...."),
+                                QStringLiteral("....##....##...."), QStringLiteral("....##....##...."),
+                                QStringLiteral("....##....##...."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gSettings()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("....##.........."),
+                                QStringLiteral(".##########....."), QStringLiteral("....##.........."),
+                                QStringLiteral("................"), QStringLiteral(".........##....."),
+                                QStringLiteral(".##########....."), QStringLiteral(".........##....."),
+                                QStringLiteral("................"), QStringLiteral("....##.........."),
+                                QStringLiteral(".##########....."), QStringLiteral("....##.........."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gDiagnostics()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".....######....."),
+                                QStringLiteral("...##......##..."), QStringLiteral("..#..........#.."),
+                                QStringLiteral("..#....##....#.."), QStringLiteral("..#....##....#.."),
+                                QStringLiteral("..#...####...#.."), QStringLiteral("..#..##..##..#.."),
+                                QStringLiteral("...#........#..."), QStringLiteral("....########...."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gInfo()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".......##......."),
+                                QStringLiteral(".......##......."), QStringLiteral("................"),
+                                QStringLiteral(".....######....."), QStringLiteral(".......##......."),
+                                QStringLiteral(".......##......."), QStringLiteral(".......##......."),
+                                QStringLiteral(".......##......."), QStringLiteral(".....######....."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gPlay()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("......##........"), QStringLiteral("......####......"),
+                                QStringLiteral("......######...."), QStringLiteral("......#######..."),
+                                QStringLiteral("......#########."), QStringLiteral("......#########."),
+                                QStringLiteral("......########.."), QStringLiteral("......######...."),
+                                QStringLiteral("......####......"), QStringLiteral("......##........"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gChevron()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("........##......"), QStringLiteral(".......##......."),
+                                QStringLiteral("......##........"), QStringLiteral(".....##........."),
+                                QStringLiteral(".....##........."), QStringLiteral("......##........"),
+                                QStringLiteral(".......##......."), QStringLiteral("........##......"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gTelegram()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".............##."),
+                                QStringLiteral("............####"), QStringLiteral("...........#####"),
+                                QStringLiteral("..........######"), QStringLiteral(".........######."),
+                                QStringLiteral("........######.."), QStringLiteral(".......######..."),
+                                QStringLiteral("......######...."), QStringLiteral(".....######....."),
+                                QStringLiteral("....#####......."), QStringLiteral("...####........."),
+                                QStringLiteral("..##............"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gRefresh()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("......####..##.."),
+                                QStringLiteral("....##....####.."), QStringLiteral("...#......#####."),
+                                QStringLiteral("..#........###.."), QStringLiteral("..#..........#.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("...#........#..."),
+                                QStringLiteral("....##....##...."), QStringLiteral("......####......"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gFolder()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("..####.........."), QStringLiteral("..#...#######..."),
+                                QStringLiteral("..#.........#..."), QStringLiteral("..#.........#..."),
+                                QStringLiteral("..###########..."), QStringLiteral("..#.........#..."),
+                                QStringLiteral("..#.........#..."), QStringLiteral("..###########..."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gCopy()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("....#######....."),
+                                QStringLiteral("....#.....#....."), QStringLiteral("..###########..."),
+                                QStringLiteral("..#.....#...#..."), QStringLiteral("..#.....#...#..."),
+                                QStringLiteral("..#.....#...#..."), QStringLiteral("..#.....#...#..."),
+                                QStringLiteral("..###########..."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gCheck()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("............##.."), QStringLiteral("...........###.."),
+                                QStringLiteral("..........###..."), QStringLiteral(".........###...."),
+                                QStringLiteral("..##....###....."), QStringLiteral("..###..###......"),
+                                QStringLiteral("...######......."), QStringLiteral("....####........"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gDownload()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".......##......."),
+                                QStringLiteral(".......##......."), QStringLiteral(".......##......."),
+                                QStringLiteral(".......##......."), QStringLiteral(".......##......."),
+                                QStringLiteral("..##...##...##.."), QStringLiteral("...##..##..##..."),
+                                QStringLiteral("....########...."), QStringLiteral(".......##......."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gPlus()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".......##......."),
+                                QStringLiteral(".......##......."), QStringLiteral(".......##......."),
+                                QStringLiteral("....########...."), QStringLiteral("....########...."),
+                                QStringLiteral(".......##......."), QStringLiteral(".......##......."),
+                                QStringLiteral(".......##......."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gMinus()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("....########...."), QStringLiteral("....########...."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gTrash()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("......####......"),
+                                QStringLiteral("..############.."), QStringLiteral("....#......#...."),
+                                QStringLiteral("....#......#...."), QStringLiteral("....#......#...."),
+                                QStringLiteral("....#......#...."), QStringLiteral("....#......#...."),
+                                QStringLiteral("....#......#...."), QStringLiteral("....########...."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gLogout()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("....####........"),
+                                QStringLiteral("....#..#........"), QStringLiteral("....#..#..##...."),
+                                QStringLiteral("....#..#..####.."), QStringLiteral("....#..#..######"),
+                                QStringLiteral("....#..#..####.."), QStringLiteral("....#..#..##...."),
+                                QStringLiteral("....####........"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gExternal()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("........######.."),
+                                QStringLiteral("........#....#.."), QStringLiteral("........#....#.."),
+                                QStringLiteral("........#..###.."), QStringLiteral("........#.###..."),
+                                QStringLiteral("........###....."), QStringLiteral(".......###......"),
+                                QStringLiteral("......###......."), QStringLiteral(".....###........"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gGlobe()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".....######....."),
+                                QStringLiteral("...##..##..##..."), QStringLiteral("..#....##....#.."),
+                                QStringLiteral(".#.....##.....#."), QStringLiteral(".##############."),
+                                QStringLiteral(".#.....##.....#."), QStringLiteral("..#....##....#.."),
+                                QStringLiteral("...##..##..##..."), QStringLiteral(".....######....."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gChip()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("..##......##...."),
+                                QStringLiteral("..############.."), QStringLiteral("..#..######..#.."),
+                                QStringLiteral("..#..#....#..#.."), QStringLiteral("..#..#....#..#.."),
+                                QStringLiteral("..#..#....#..#.."), QStringLiteral("..#..######..#.."),
+                                QStringLiteral("..############.."), QStringLiteral("..##......##...."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gCoffee()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("....######......"),
+                                QStringLiteral("...#......##...."), QStringLiteral("...#.......#...."),
+                                QStringLiteral("...#......##...."), QStringLiteral("....#....##....."),
+                                QStringLiteral("....######......"), QStringLiteral("................"),
+                                QStringLiteral("...########....."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gMods()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("..####...####..."),
+                                QStringLiteral("..#..#...#..#..."), QStringLiteral("..#..#...#..#..."),
+                                QStringLiteral("..####...####..."), QStringLiteral("................"),
+                                QStringLiteral("..####...####..."), QStringLiteral("..#..#...#..#..."),
+                                QStringLiteral("..#..#...#..#..."), QStringLiteral("..####...####..."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gMonitor()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("..############.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("..#..######..#.."),
+                                QStringLiteral("..#..#....#..#.."), QStringLiteral("..#..#....#..#.."),
+                                QStringLiteral("..#..######..#.."), QStringLiteral("..#..........#.."),
+                                QStringLiteral("..############.."), QStringLiteral(".....##..##....."),
+                                QStringLiteral("....########...."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gShield()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("....########...."),
+                                QStringLiteral("...#........#..."), QStringLiteral("..#..........#.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("..#..........#.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("...#........#..."),
+                                QStringLiteral("....##....##...."), QStringLiteral("......####......"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gKey()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".....####......."),
+                                QStringLiteral("....#....#......"), QStringLiteral("....#....#......"),
+                                QStringLiteral(".....####......."), QStringLiteral("......##........"),
+                                QStringLiteral("......##........"), QStringLiteral("......####......"),
+                                QStringLiteral("......##........"), QStringLiteral("......####......"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gDot()
+{
+    static const QStringList g{ QStringLiteral("........"), QStringLiteral("..####.."),
+                                QStringLiteral(".######."), QStringLiteral(".######."),
+                                QStringLiteral(".######."), QStringLiteral("..####.."),
+                                QStringLiteral("........"), QStringLiteral("........") };
+    return g;
+}
+
+const QColor IconFg(0xE9, 0xED, 0xF5);
+const QColor IconDark(0x1A, 0x0B, 0x11);
+const QColor IconMuted(0x8A, 0x94, 0xA6);
+
+void setGlyph(QPushButton* b, const QStringList& glyph, const QColor& color)
+{
+    b->setIcon(theme::pixelIcon(glyph, color));
+    b->setIconSize(QSize(16, 16));
+}
+
+struct Tone {
+    QColor fg;
+    QColor bg;
+    QColor border;
+};
+
+const Tone ToneOk{ QColor(0x4B, 0xE3, 0x9F), QColor(0x10, 0x24, 0x1C), QColor(0x23, 0x53, 0x42) };
+const Tone ToneWarn{ QColor(0xF5, 0xB9, 0x42), QColor(0x2A, 0x22, 0x10), QColor(0x5A, 0x4A, 0x1E) };
+const Tone ToneAccent{ QColor(0xFF, 0x86, 0xA5), QColor(0x2A, 0x13, 0x1C), QColor(0x6E, 0x1B, 0x31) };
+const Tone ToneErr{ QColor(0xFF, 0x6E, 0x7B), QColor(0x2A, 0x12, 0x16), QColor(0x5E, 0x25, 0x30) };
+const Tone ToneMuted{ QColor(0xA9, 0xB2, 0xC3), QColor(0x14, 0x18, 0x21), QColor(0x2C, 0x33, 0x40) };
+
+void setChip(QLabel* label, const QString& text, const Tone& tone)
+{
+    label->setText(text);
+    label->setStyleSheet(QStringLiteral("color:%1; background:%2; border:2px solid %3; padding:3px 8px;")
+                             .arg(tone.fg.name(), tone.bg.name(), tone.border.name()));
+}
+
+void setStatusLabel(QLabel* label, const QString& text, const QColor& color)
+{
+    label->setText(text);
+    label->setStyleSheet(QStringLiteral("color:%1; background:#0E1219; border:2px solid #20252F; "
+                                        "border-left:4px solid %1; padding:8px 10px;")
+                             .arg(color.name()));
+}
+
 QFrame* card(QWidget* parent)
 {
     auto* frame = new QFrame(parent);
@@ -161,14 +550,42 @@ QFrame* rule(QWidget* parent)
     return line;
 }
 
-QPushButton* button(const QString& text, QWidget* parent, const QString& objectName = QString())
+QWidget* accentRule(QWidget* parent)
+{
+    auto* wrap = new QWidget(parent);
+    auto* row = new QHBoxLayout(wrap);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(0);
+    auto* accent = new QFrame(wrap);
+    accent->setObjectName(QStringLiteral("berryRuleAccent"));
+    accent->setFixedSize(56, 2);
+    auto* rest = rule(wrap);
+    row->addWidget(accent);
+    row->addWidget(rest, 1);
+    return wrap;
+}
+
+QPushButton* button(const QString& text, QWidget* parent, const QString& objectName = QString(),
+                    const QStringList& glyph = {})
 {
     auto* b = new QPushButton(text, parent);
     b->setAutoDefault(false);
     b->setCursor(Qt::PointingHandCursor);
     if (!objectName.isEmpty())
         b->setObjectName(objectName);
+    if (!glyph.isEmpty()) {
+        const bool onAccent = objectName == QLatin1String("berryPrimary") || objectName == QLatin1String("berryPlay");
+        const bool quiet = objectName == QLatin1String("berryGhost") || objectName == QLatin1String("berrySegment");
+        setGlyph(b, glyph, onAccent ? IconDark : quiet ? IconMuted : IconFg);
+    }
     return b;
+}
+
+QIcon listDot(bool active)
+{
+    if (!active)
+        return QIcon(QPixmap(8, 8));
+    return QIcon(theme::pixelPixmap(gDot(), theme::Accent));
 }
 
 QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& title, const QString& subtitle)
@@ -176,12 +593,21 @@ QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& titl
     auto* wrap = new QWidget(parent);
     auto* box = new QVBoxLayout(wrap);
     box->setContentsMargins(0, 0, 0, 2);
-    box->setSpacing(5);
-    box->addWidget(caption(eyebrow, wrap));
+    box->setSpacing(4);
+
+    auto* top = new QHBoxLayout;
+    top->setSpacing(8);
+    auto* mark = new QFrame(wrap);
+    mark->setObjectName(QStringLiteral("berryMark"));
+    mark->setFixedSize(10, 10);
+    top->addWidget(mark, 0, Qt::AlignVCenter);
+    top->addWidget(caption(eyebrow, wrap));
+    top->addStretch(1);
+    box->addLayout(top);
 
     auto* heading = new QLabel(title, wrap);
     heading->setObjectName(QStringLiteral("berryTitle"));
-    QFont font = theme::semiBold(26);
+    QFont font = theme::semiBold(28);
     font.setLetterSpacing(QFont::AbsoluteSpacing, 0.5);
     heading->setFont(font);
     box->addWidget(heading);
@@ -193,8 +619,8 @@ QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& titl
         box->addWidget(sub);
     }
 
-    box->addSpacing(8);
-    box->addWidget(rule(wrap));
+    box->addSpacing(10);
+    box->addWidget(accentRule(wrap));
     return wrap;
 }
 
@@ -227,10 +653,11 @@ class NavButton : public QPushButton {
         setCursor(Qt::PointingHandCursor);
         setFocusPolicy(Qt::NoFocus);
         setAttribute(Qt::WA_Hover, true);
+        setToolTip(label);
         QFont navFont = theme::semiBold(11);
-        navFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.8);
+        navFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.7);
         setFont(navFont);
-        setFixedHeight(46);
+        setFixedHeight(42);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
@@ -240,52 +667,35 @@ class NavButton : public QPushButton {
         QPainter painter(this);
         painter.setRenderHint(QPainter::Antialiasing, false);
 
-        const QRectF area = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
         const bool active = isChecked();
         const bool hover = underMouse();
-        const QColor background = active ? QColor(0x19, 0x12, 0x1D) : hover ? QColor(0x12, 0x17, 0x20) : QColor(0x0C, 0x0E, 0x14);
-        const QColor border = active ? QColor(0xFF, 0x5D, 0x86) : hover ? QColor(0x2C, 0x33, 0x40) : QColor(0, 0, 0, 0);
+        const QRect area = rect();
 
-        const qreal cut = 4.0;
-        QPainterPath shape;
-        shape.moveTo(area.left() + cut, area.top());
-        shape.lineTo(area.right() - cut, area.top());
-        shape.lineTo(area.right(), area.top() + cut);
-        shape.lineTo(area.right(), area.bottom() - cut);
-        shape.lineTo(area.right() - cut, area.bottom());
-        shape.lineTo(area.left() + cut, area.bottom());
-        shape.lineTo(area.left(), area.bottom() - cut);
-        shape.lineTo(area.left(), area.top() + cut);
-        shape.closeSubpath();
-        painter.fillPath(shape, background);
-
-        if (border.alpha() > 0) {
-            painter.setPen(QPen(border, 2));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawPath(shape);
-        }
         if (active)
-            painter.fillRect(QRectF(area.left() + 2, area.top() + 7, 4, area.height() - 14), QColor(0xFF, 0x5D, 0x86));
+            painter.fillRect(area, QColor(0x1A, 0x12, 0x19));
+        else if (hover)
+            painter.fillRect(area, QColor(0x12, 0x16, 0x1E));
 
-        const QColor icon = active ? QColor(0xFF, 0x5D, 0x86) : hover ? QColor(0xE9, 0xED, 0xF5) : QColor(0x8A, 0x94, 0xA6);
-        const qreal pixel = 2.0;
+        if (active)
+            painter.fillRect(QRect(area.left(), area.top() + 5, 4, area.height() - 10), QColor(0xFF, 0x5D, 0x86));
+
+        const QColor iconColor = active ? QColor(0xFF, 0x5D, 0x86)
+                                        : hover ? QColor(0xE9, 0xED, 0xF5) : QColor(0x7C, 0x87, 0x98);
         const qreal iconX = 16.0;
-        const qreal iconY = (height() - m_glyph.size() * pixel) / 2.0;
+        const qreal iconY = (height() - m_glyph.size()) / 2.0;
         painter.setPen(Qt::NoPen);
+        painter.setBrush(iconColor);
         for (int row = 0; row < m_glyph.size(); ++row) {
             const QString& line = m_glyph.at(row);
             for (int column = 0; column < line.size(); ++column) {
                 if (line.at(column) == QLatin1Char('#'))
-                    painter.fillRect(QRectF(iconX + column * pixel, iconY + row * pixel, pixel, pixel), icon);
+                    painter.fillRect(QRectF(iconX + column, iconY + row, 1, 1), iconColor);
             }
         }
 
         painter.setFont(font());
         painter.setPen(active ? QColor(0xF7, 0xF9, 0xFC) : hover ? QColor(0xE9, 0xED, 0xF5) : QColor(0xA6, 0xB0, 0xC2));
-        painter.drawText(QRect(48, 0, width() - 62, height()), Qt::AlignVCenter | Qt::AlignLeft, text());
-
-        if (active)
-            painter.fillRect(QRectF(width() - 20, height() / 2.0 - 2, 4, 4), QColor(0xFF, 0x5D, 0x86));
+        painter.drawText(QRect(44, 0, width() - 54, height()), Qt::AlignVCenter | Qt::AlignLeft, text());
     }
 
    private:
@@ -296,35 +706,17 @@ QStringList navGlyph(int index)
 {
     switch (index) {
         case 0:
-            return { QStringLiteral("....##...."), QStringLiteral("...####..."), QStringLiteral("..######.."),
-                     QStringLiteral(".########."), QStringLiteral("##########"), QStringLiteral("...####..."),
-                     QStringLiteral("...####..."), QStringLiteral("...####..."), QStringLiteral("...####..."),
-                     QStringLiteral("...####...") };
+            return gHome();
         case 1:
-            return { QStringLiteral("...##....."), QStringLiteral("..####...."), QStringLiteral("..####...."),
-                     QStringLiteral("...##....."), QStringLiteral(".######..."), QStringLiteral("########.."),
-                     QStringLiteral("########.."), QStringLiteral("...##....."), QStringLiteral("...##....."),
-                     QStringLiteral("..####....") };
+            return gAccount();
         case 2:
-            return { QStringLiteral("##.....##."), QStringLiteral("###...###."), QStringLiteral("##########"),
-                     QStringLiteral(".########."), QStringLiteral("...####..."), QStringLiteral("...####..."),
-                     QStringLiteral("...####..."), QStringLiteral("...####..."), QStringLiteral("...####..."),
-                     QStringLiteral("...####...") };
+            return gSkin();
         case 3:
-            return { QStringLiteral("###...####"), QStringLiteral("###...####"), QStringLiteral(".........."),
-                     QStringLiteral("####...###"), QStringLiteral("####...###"), QStringLiteral(".........."),
-                     QStringLiteral("###...####"), QStringLiteral("###...####"), QStringLiteral(".........."),
-                     QStringLiteral("..........") };
+            return gSettings();
         case 4:
-            return { QStringLiteral(".....##..."), QStringLiteral(".....##..."), QStringLiteral("...###...."),
-                     QStringLiteral("...###...."), QStringLiteral("####..####"), QStringLiteral("..###....."),
-                     QStringLiteral("....###..."), QStringLiteral(".....##..."), QStringLiteral(".....##..."),
-                     QStringLiteral("..........") };
+            return gDiagnostics();
         default:
-            return { QStringLiteral("...###...."), QStringLiteral("..#####..."), QStringLiteral("..#####..."),
-                     QStringLiteral("....##...."), QStringLiteral("....##...."), QStringLiteral("....##...."),
-                     QStringLiteral(".........."), QStringLiteral("....##...."), QStringLiteral("....##...."),
-                     QStringLiteral("..........") };
+            return gInfo();
     }
 }
 
@@ -349,28 +741,36 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     // ---------------------------------------------------------------- sidebar
     auto* side = new QWidget(this);
     side->setObjectName(QStringLiteral("berrySide"));
-    side->setFixedWidth(238);
+    side->setFixedWidth(240);
     side->setStyleSheet(
         QStringLiteral("#berrySide { background: #0B0D12; background-image: url(:/berry/pattern.png); "
                        "border-right: 2px solid #1C222D; }"));
     auto* sideLayout = new QVBoxLayout(side);
-    sideLayout->setContentsMargins(16, 22, 16, 16);
-    sideLayout->setSpacing(4);
+    sideLayout->setContentsMargins(14, 20, 14, 16);
+    sideLayout->setSpacing(6);
 
-    auto* logo = new QLabel(side);
+    auto* brand = new QWidget(side);
+    auto* brandRow = new QHBoxLayout(brand);
+    brandRow->setContentsMargins(4, 0, 4, 0);
+    brandRow->setSpacing(11);
+    auto* logo = new QLabel(brand);
     logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(54, 54, Qt::KeepAspectRatio, Qt::FastTransformation));
-    sideLayout->addWidget(logo);
+                        .scaled(46, 46, Qt::KeepAspectRatio, Qt::FastTransformation));
+    brandRow->addWidget(logo);
 
-    auto* wordmark = new QLabel(QStringLiteral("BERRYTRIP"), side);
+    auto* brandText = new QVBoxLayout;
+    brandText->setSpacing(1);
+    auto* wordmark = new QLabel(QStringLiteral("BERRYTRIP"), brand);
     wordmark->setObjectName(QStringLiteral("berryH1"));
-    QFont wordFont = theme::semiBold(18);
-    wordFont.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
+    QFont wordFont = theme::semiBold(16);
+    wordFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.6);
     wordmark->setFont(wordFont);
-    sideLayout->addWidget(wordmark);
+    brandText->addWidget(wordmark);
+    brandText->addWidget(caption(QStringLiteral("1.21.1 · NEOFORGE"), brand));
+    brandRow->addLayout(brandText, 1);
+    sideLayout->addWidget(brand);
 
-    sideLayout->addWidget(caption(QStringLiteral("1.21.1 · NEOFORGE"), side));
-    sideLayout->addSpacing(14);
+    sideLayout->addSpacing(10);
     sideLayout->addWidget(rule(side));
     sideLayout->addSpacing(10);
 
@@ -378,8 +778,13 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     m_pages->setObjectName(QStringLiteral("berryPages"));
     m_pages->setAutoFillBackground(true);
 
-    sideLayout->addWidget(caption(tr("РАЗДЕЛЫ"), side));
-    sideLayout->addSpacing(4);
+    auto* navHead = new QHBoxLayout;
+    navHead->setContentsMargins(5, 0, 4, 0);
+    navHead->setSpacing(8);
+    navHead->addWidget(caption(tr("РАЗДЕЛЫ"), side));
+    navHead->addWidget(rule(side), 1);
+    sideLayout->addLayout(navHead);
+    sideLayout->addSpacing(2);
 
     const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("СКИНЫ"), tr("НАСТРОЙКИ"),
                               tr("ДИАГНОСТИКА"), tr("О ПРОГРАММЕ") };
@@ -395,10 +800,17 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     sideLayout->addStretch(1);
     sideLayout->addWidget(rule(side));
     sideLayout->addSpacing(8);
-    sideLayout->addWidget(caption(QStringLiteral("v%1 · GPL-3.0").arg(Config::version()), side));
-    auto* siteButton = button(tr("Сайт сборки"), side, QStringLiteral("berryGhost"));
+
+    auto* foot = new QWidget(side);
+    auto* footLayout = new QVBoxLayout(foot);
+    footLayout->setContentsMargins(5, 0, 4, 0);
+    footLayout->setSpacing(4);
+    footLayout->addWidget(caption(QStringLiteral("v%1 · GPL-3.0").arg(Config::version()), foot));
+    auto* siteButton = button(tr("Сайт сборки"), foot, QStringLiteral("berryGhost"), gGlobe());
+    siteButton->setStyleSheet(QStringLiteral("text-align: left; padding: 7px 5px;"));
     connect(siteButton, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(SiteUrl)); });
-    sideLayout->addWidget(siteButton);
+    footLayout->addWidget(siteButton);
+    sideLayout->addWidget(foot);
 
     // ---------------------------------------------------------------- pages
     m_pages->addWidget(buildHome());
@@ -645,32 +1057,32 @@ QWidget* Panel::buildHome()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(32, 26, 32, 26);
-    layout->setSpacing(16);
+    layout->setContentsMargins(28, 24, 28, 24);
+    layout->setSpacing(18);
 
     layout->addWidget(pageHeader(content, tr("BERRYTRIP"), tr("Главное"),
                                  tr("Сборка обновляется сама, вход — через Telegram-бота.")));
 
     auto* body = new QHBoxLayout;
-    body->setSpacing(16);
+    body->setSpacing(18);
 
     auto* left = new QVBoxLayout;
-    left->setSpacing(16);
+    left->setSpacing(14);
 
     // ------------------------------------------------------------------ hero
     auto* hero = new QFrame;
     hero->setObjectName(QStringLiteral("berryHero"));
     auto* heroRow = new QHBoxLayout(hero);
-    heroRow->setContentsMargins(24, 20, 24, 20);
-    heroRow->setSpacing(18);
+    heroRow->setContentsMargins(22, 18, 22, 18);
+    heroRow->setSpacing(16);
 
     auto* logo = new QLabel(hero);
     logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(66, 66, Qt::KeepAspectRatio, Qt::FastTransformation));
+                        .scaled(64, 64, Qt::KeepAspectRatio, Qt::FastTransformation));
     heroRow->addWidget(logo);
 
     auto* text = new QVBoxLayout;
-    text->setSpacing(4);
+    text->setSpacing(3);
     auto* title = new QLabel(QStringLiteral("BerryTrip"), hero);
     title->setObjectName(QStringLiteral("berryDisplay"));
     QFont titleFont = theme::semiBold(32);
@@ -678,19 +1090,19 @@ QWidget* Panel::buildHome()
     title->setFont(titleFont);
     auto* subtitle = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), hero);
     subtitle->setObjectName(QStringLiteral("berryCaption"));
-    m_chip = new QLabel(tr("ПРОВЕРКА СБОРКИ"), hero);
-    m_chip->setObjectName(QStringLiteral("berryWarn"));
-    QFont chipFont = theme::semiBold(10);
-    chipFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.4);
+    m_chip = new QLabel(hero);
+    QFont chipFont = theme::semiBold(9);
+    chipFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.3);
     m_chip->setFont(chipFont);
+    setChip(m_chip, tr("ПРОВЕРКА СБОРКИ"), ToneMuted);
     text->addWidget(title);
     text->addWidget(subtitle);
-    text->addSpacing(3);
+    text->addSpacing(4);
     text->addWidget(m_chip, 0, Qt::AlignLeft);
     heroRow->addLayout(text, 1);
 
-    m_play = button(tr("Играть"), hero, QStringLiteral("berryPlay"));
-    m_play->setMinimumSize(214, 62);
+    m_play = button(tr("Играть"), hero, QStringLiteral("berryPlay"), gPlay());
+    m_play->setFixedSize(188, 60);
     connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
     heroRow->addWidget(m_play, 0, Qt::AlignVCenter);
     left->addWidget(hero);
@@ -705,7 +1117,7 @@ QWidget* Panel::buildHome()
     updateHead->setSpacing(10);
     updateHead->addWidget(caption(tr("ОБНОВЛЕНИЕ ЛАУНЧЕРА"), m_updateBanner));
     updateHead->addStretch(1);
-    m_updateButton = button(tr("Скачать"), m_updateBanner, QStringLiteral("berryPrimary"));
+    m_updateButton = button(tr("Скачать"), m_updateBanner, QStringLiteral("berryPrimary"), gDownload());
     connect(m_updateButton, &QPushButton::clicked, this, &Panel::installUpdate);
     updateHead->addWidget(m_updateButton);
     updateBannerLayout->addLayout(updateHead);
@@ -722,12 +1134,12 @@ QWidget* Panel::buildHome()
 
     // --------------------------------------------------------- server/account
     auto* row = new QHBoxLayout;
-    row->setSpacing(16);
+    row->setSpacing(14);
 
     auto* server = card(content);
     auto* serverLayout = new QVBoxLayout(server);
     serverLayout->setContentsMargins(20, 16, 20, 16);
-    serverLayout->setSpacing(6);
+    serverLayout->setSpacing(5);
     serverLayout->addWidget(caption(tr("СЕРВЕР"), server));
     auto* address = new QLabel(Config::serverAddress(), server);
     address->setObjectName(QStringLiteral("berryMono"));
@@ -735,20 +1147,26 @@ QWidget* Panel::buildHome()
     m_motd = new QLabel(tr("Проверяю сервер…"), server);
     m_motd->setObjectName(QStringLiteral("berryH1"));
     m_motd->setWordWrap(true);
+    serverLayout->addWidget(m_motd);
+
+    auto* serverState = new QHBoxLayout;
+    serverState->setSpacing(12);
     m_players = new QLabel(tr("Игроки: —"), server);
     m_players->setObjectName(QStringLiteral("berryMuted"));
     m_pingLabel = new QLabel(tr("PING —"), server);
     m_pingLabel->setObjectName(QStringLiteral("berryDim"));
-    serverLayout->addWidget(m_motd);
-    serverLayout->addWidget(m_players);
-    serverLayout->addWidget(m_pingLabel);
+    serverState->addWidget(m_players);
+    serverState->addWidget(m_pingLabel);
+    serverState->addStretch(1);
+    serverLayout->addLayout(serverState);
     serverLayout->addStretch(1);
 
     auto* serverButtons = new QHBoxLayout;
     serverButtons->setSpacing(8);
-    auto* refresh = button(tr("Пинг"), server);
+    auto* refresh = button(tr("Пинг"), server, QString(), gRefresh());
     connect(refresh, &QPushButton::clicked, this, &Panel::startPing);
-    auto* telegram = button(tr("Telegram"), server);
+    auto* telegram = button(tr("Telegram"), server, QString(), gTelegram());
+    setGlyph(telegram, gTelegram(), theme::Telegram);
     connect(telegram, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(TelegramUrl)); });
     serverButtons->addWidget(refresh);
     serverButtons->addWidget(telegram);
@@ -759,14 +1177,17 @@ QWidget* Panel::buildHome()
     auto* account = card(content);
     auto* accountLayout = new QVBoxLayout(account);
     accountLayout->setContentsMargins(20, 16, 20, 16);
-    accountLayout->setSpacing(6);
+    accountLayout->setSpacing(5);
     accountLayout->addWidget(caption(tr("АККАУНТ"), account));
     m_homeAccount = new QLabel(tr("Вход не выполнен"), account);
     m_homeAccount->setObjectName(QStringLiteral("berryH1"));
     m_homeAccount->setWordWrap(true);
     accountLayout->addWidget(m_homeAccount);
+    auto* accountNote = new QLabel(QStringLiteral("TELEGRAM · @KILLBERRIESBOT"), account);
+    accountNote->setObjectName(QStringLiteral("berryCaption"));
+    accountLayout->addWidget(accountNote);
     accountLayout->addStretch(1);
-    auto* openAccount = button(tr("Аккаунт →"), account);
+    auto* openAccount = button(tr("Аккаунт"), account, QString(), gAccount());
     connect(openAccount, &QPushButton::clicked, this, [this] { goToPage(1); });
     accountLayout->addWidget(openAccount, 0, Qt::AlignLeft);
     row->addWidget(account, 1);
@@ -787,14 +1208,15 @@ QWidget* Panel::buildHome()
     updateLayout->addWidget(m_status);
 
     auto* actions = new QHBoxLayout;
-    m_retry = button(tr("Повторить"), update);
+    actions->setSpacing(8);
+    m_retry = button(tr("Повторить"), update, QString(), gRefresh());
     m_retry->hide();
     connect(m_retry, &QPushButton::clicked, this, &Panel::startSync);
     actions->addWidget(m_retry);
     actions->addStretch(1);
-    auto* site = button(tr("Сайт"), update, QStringLiteral("berryGhost"));
+    auto* site = button(tr("Сайт"), update, QStringLiteral("berryGhost"), gGlobe());
     connect(site, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(SiteUrl)); });
-    auto* releases = button(tr("Релизы"), update, QStringLiteral("berryGhost"));
+    auto* releases = button(tr("Релизы"), update, QStringLiteral("berryGhost"), gDownload());
     connect(releases, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(ReleasesUrl)); });
     actions->addWidget(site);
     actions->addWidget(releases);
@@ -807,21 +1229,22 @@ QWidget* Panel::buildHome()
     // --------------------------------------------------------------- showcase
     auto* showcase = new QFrame(content);
     showcase->setObjectName(QStringLiteral("berryShowcase"));
-    showcase->setFixedWidth(330);
+    showcase->setFixedWidth(318);
     auto* showcaseLayout = new QVBoxLayout(showcase);
-    showcaseLayout->setContentsMargins(16, 14, 16, 14);
+    showcaseLayout->setContentsMargins(16, 14, 16, 16);
     showcaseLayout->setSpacing(8);
 
     auto* showcaseHead = new QHBoxLayout;
+    showcaseHead->setSpacing(8);
     showcaseHead->addWidget(caption(tr("ТВОЙ СКИН"), showcase));
     showcaseHead->addStretch(1);
-    auto* accent = new QLabel(QStringLiteral("◆"), showcase);
-    accent->setObjectName(QStringLiteral("berryAccent"));
-    showcaseHead->addWidget(accent);
+    auto* viewTag = new QLabel(QStringLiteral("3D"), showcase);
+    viewTag->setObjectName(QStringLiteral("berryDim"));
+    showcaseHead->addWidget(viewTag);
     showcaseLayout->addLayout(showcaseHead);
 
     m_skinPreview = new Skin3D(showcase);
-    m_skinPreview->setMinimumSize(280, 380);
+    m_skinPreview->setMinimumSize(250, 360);
     m_skinPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     showcaseLayout->addWidget(m_skinPreview, 1);
 
@@ -831,7 +1254,7 @@ QWidget* Panel::buildHome()
     showcaseLayout->addWidget(m_skinName);
 
     auto* showcaseFoot = new QHBoxLayout;
-    auto* openSkins = button(tr("Скины →"), showcase);
+    auto* openSkins = button(tr("Открыть скины"), showcase, QString(), gSkin());
     connect(openSkins, &QPushButton::clicked, this, [this] { goToPage(2); });
     showcaseFoot->addWidget(openSkins);
     showcaseFoot->addStretch(1);
@@ -847,81 +1270,94 @@ QWidget* Panel::buildAccount()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(32, 26, 32, 26);
-    layout->setSpacing(16);
+    layout->setContentsMargins(28, 24, 28, 24);
+    layout->setSpacing(18);
 
     layout->addWidget(pageHeader(content, tr("АККАУНТ"), tr("Вход"),
                                  tr("Только через Telegram-бота — Microsoft-аккаунт не нужен.")));
 
+    auto* body = new QHBoxLayout;
+    body->setSpacing(18);
+
+    auto* left = new QVBoxLayout;
+    left->setSpacing(14);
+
     auto* loginCard = card(content);
-    loginCard->setMaximumWidth(720);
     auto* loginLayout = new QVBoxLayout(loginCard);
     loginLayout->setContentsMargins(22, 20, 22, 20);
-    loginLayout->setSpacing(12);
-    loginLayout->addWidget(caption(tr("НИК В MINECRAFT"), loginCard));
+    loginLayout->setSpacing(9);
+    loginLayout->addWidget(caption(tr("ВХОД ЧЕРЕЗ TELEGRAM"), loginCard));
+
+    auto* nickCaption = new QLabel(tr("Ник в Minecraft"), loginCard);
+    nickCaption->setObjectName(QStringLiteral("berryDim"));
+    loginLayout->addWidget(nickCaption);
 
     auto* nickRow = new QHBoxLayout;
-    nickRow->setSpacing(12);
+    nickRow->setSpacing(10);
     m_nick = new QLineEdit(loginCard);
     m_nick->setPlaceholderText(tr("3–16 символов: латиница, цифры, _"));
-    m_nick->setMinimumHeight(40);
+    m_nick->setMinimumHeight(42);
     nickRow->addWidget(m_nick, 1);
-    m_login = button(tr("Войти через Telegram"), loginCard, QStringLiteral("berryPrimary"));
-    m_login->setMinimumHeight(40);
+    m_login = button(tr("Войти через Telegram"), loginCard, QStringLiteral("berryPrimary"), gTelegram());
+    m_login->setMinimumHeight(42);
     connect(m_login, &QPushButton::clicked, this, &Panel::onAuthClicked);
     nickRow->addWidget(m_login);
     loginLayout->addLayout(nickRow);
 
     m_authStatus = new QLabel(tr("Введи ник и подтверди вход в боте."), loginCard);
-    m_authStatus->setObjectName(QStringLiteral("berryDim"));
     m_authStatus->setWordWrap(true);
+    m_authStatus->setMinimumHeight(38);
+    setStatusLabel(m_authStatus, tr("Введи ник и подтверди вход в боте."), theme::Dim);
     loginLayout->addWidget(m_authStatus);
+
+    loginLayout->addSpacing(2);
     loginLayout->addWidget(rule(loginCard));
 
     auto* secondary = new QHBoxLayout;
-    secondary->setSpacing(10);
-    m_openTelegram = button(tr("Скопировать ссылку"), loginCard);
+    secondary->setSpacing(8);
+    m_openTelegram = button(tr("Скопировать ссылку"), loginCard, QString(), gCopy());
     connect(m_openTelegram, &QPushButton::clicked, this, [this] {
         const QString link = m_auth->pendingLink();
         if (link.isEmpty()) {
-            m_authStatus->setText(tr("Ссылка ещё не получена — начни вход заново."));
+            setStatusLabel(m_authStatus, tr("Ссылка ещё не получена — начни вход заново."), theme::Warn);
             return;
         }
         QApplication::clipboard()->setText(link);
-        m_authStatus->setText(tr("Ссылка скопирована — открой её в Telegram или браузере."));
+        setStatusLabel(m_authStatus, tr("Ссылка скопирована — открой её в Telegram или браузере."), theme::Ok);
     });
-    m_logout = button(tr("Выйти"), loginCard, QStringLiteral("berryGhost"));
+    m_openTelegram->hide();
+    m_logout = button(tr("Выйти"), loginCard, QStringLiteral("berryGhost"), gLogout());
     connect(m_logout, &QPushButton::clicked, this, [this] {
         m_auth->logout();
         refreshAuth();
     });
-    m_openTelegram->hide();
     secondary->addWidget(m_openTelegram);
     secondary->addWidget(m_logout);
     secondary->addStretch(1);
     loginLayout->addLayout(secondary);
-    layout->addWidget(loginCard, 0, Qt::AlignLeft);
+    left->addWidget(loginCard);
 
     auto* steps = card(content);
-    steps->setMaximumWidth(720);
     auto* stepsLayout = new QVBoxLayout(steps);
     stepsLayout->setContentsMargins(22, 20, 22, 20);
-    stepsLayout->setSpacing(10);
+    stepsLayout->setSpacing(11);
     stepsLayout->addWidget(caption(tr("КАК ЭТО РАБОТАЕТ"), steps));
 
     const QVector<QPair<QString, QString>> rows{
-        { QStringLiteral("01"), tr("Введи ник, под которым играешь.") },
-        { QStringLiteral("02"), tr("Лаунчер откроет Telegram Desktop или браузер.") },
-        { QStringLiteral("03"), tr("Нажми Start в Telegram — ник попадёт в вайтлист.") },
-        { QStringLiteral("04"), tr("Токен сохранится, кнопка «Играть» разблокируется.") },
+        { QStringLiteral("1"), tr("Введи ник, под которым играешь.") },
+        { QStringLiteral("2"), tr("Лаунчер откроет Telegram Desktop или браузер.") },
+        { QStringLiteral("3"), tr("Нажми Start в Telegram — ник попадёт в вайтлист.") },
+        { QStringLiteral("4"), tr("Токен сохранится, кнопка «Играть» разблокируется.") },
     };
     for (const auto& row : rows) {
         auto* line = new QHBoxLayout;
-        line->setSpacing(14);
+        line->setSpacing(12);
         auto* number = new QLabel(row.first, steps);
-        number->setObjectName(QStringLiteral("berryAccent"));
-        number->setFont(theme::semiBold(14));
-        number->setFixedWidth(28);
+        number->setAlignment(Qt::AlignCenter);
+        number->setFixedSize(24, 24);
+        number->setFont(theme::semiBold(11));
+        number->setStyleSheet(QStringLiteral(
+            "color:#FF86A5; background:#1A1219; border:2px solid #6E1B31;"));
         auto* text = new QLabel(row.second, steps);
         text->setObjectName(QStringLiteral("berryMuted"));
         text->setWordWrap(true);
@@ -929,7 +1365,48 @@ QWidget* Panel::buildAccount()
         line->addWidget(text, 1);
         stepsLayout->addLayout(line);
     }
-    layout->addWidget(steps, 0, Qt::AlignLeft);
+    left->addWidget(steps);
+    left->addStretch(1);
+
+    body->addLayout(left, 1);
+
+    auto* tips = card(content);
+    tips->setFixedWidth(300);
+    auto* tipsLayout = new QVBoxLayout(tips);
+    tipsLayout->setContentsMargins(20, 18, 20, 18);
+    tipsLayout->setSpacing(10);
+    tipsLayout->addWidget(caption(tr("ПОДСКАЗКИ"), tips));
+
+    const auto addTip = [&](const QStringList& glyph, const QString& text) {
+        auto* row = new QHBoxLayout;
+        row->setSpacing(10);
+        auto* icon = new QLabel(tips);
+        icon->setPixmap(theme::pixelPixmap(glyph, theme::Accent));
+        icon->setFixedSize(16, 16);
+        auto* label = new QLabel(text, tips);
+        label->setObjectName(QStringLiteral("berryDim"));
+        label->setWordWrap(true);
+        row->addWidget(icon, 0, Qt::AlignTop);
+        row->addWidget(label, 1);
+        tipsLayout->addLayout(row);
+    };
+    addTip(gShield(), tr("Один ник — один человек. Передавать вход нельзя."));
+    addTip(gKey(), tr("Токен входа живёт 30 дней, потом нужен новый Start."));
+    addTip(gTelegram(), tr("Всё подтверждение — одна кнопка Start в боте."));
+
+    tipsLayout->addStretch(1);
+    tipsLayout->addWidget(rule(tips));
+    tipsLayout->addSpacing(2);
+    auto* bot = new QLabel(QStringLiteral("@killberriesbot"), tips);
+    bot->setObjectName(QStringLiteral("berryMono"));
+    tipsLayout->addWidget(bot);
+    auto* openBot = button(tr("Открыть бота"), tips, QString(), gTelegram());
+    setGlyph(openBot, gTelegram(), theme::Telegram);
+    connect(openBot, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(TelegramUrl)); });
+    tipsLayout->addWidget(openBot);
+
+    body->addWidget(tips, 0, Qt::AlignTop);
+    layout->addLayout(body, 1);
     layout->addStretch(1);
 
     return page(content);
@@ -939,7 +1416,7 @@ QWidget* Panel::buildSkins()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(32, 26, 32, 26);
+    layout->setContentsMargins(28, 24, 28, 24);
     layout->setSpacing(16);
 
     layout->addWidget(pageHeader(content, tr("QUICK SKIN"), tr("Скины"),
@@ -948,8 +1425,16 @@ QWidget* Panel::buildSkins()
     auto* modelCard = card(content);
     auto* modelLayout = new QVBoxLayout(modelCard);
     modelLayout->setContentsMargins(20, 16, 20, 16);
-    modelLayout->setSpacing(8);
-    modelLayout->addWidget(caption(tr("МОДЕЛЬ"), modelCard));
+    modelLayout->setSpacing(9);
+
+    auto* modelHead = new QHBoxLayout;
+    modelHead->setSpacing(10);
+    modelHead->addWidget(caption(tr("МОДЕЛЬ"), modelCard));
+    modelHead->addStretch(1);
+    auto* modelHint = new QLabel(tr("3D-модель показывается на главном экране."), modelCard);
+    modelHint->setObjectName(QStringLiteral("berryDim"));
+    modelHead->addWidget(modelHint);
+    modelLayout->addLayout(modelHead);
 
     auto* models = new QHBoxLayout;
     models->setSpacing(6);
@@ -969,10 +1454,6 @@ QWidget* Panel::buildSkins()
     m_modelAuto = addModel(QStringLiteral("AUTO"), QStringLiteral("auto"));
     m_modelClassic = addModel(QStringLiteral("CLASSIC"), QStringLiteral("classic"));
     m_modelSlim = addModel(QStringLiteral("SLIM"), QStringLiteral("slim"));
-    models->addSpacing(10);
-    auto* modelHint = new QLabel(tr("3D-модель показывается на главном экране."), modelCard);
-    modelHint->setObjectName(QStringLiteral("berryDim"));
-    models->addWidget(modelHint);
     models->addStretch(1);
     modelLayout->addLayout(models);
     layout->addWidget(modelCard);
@@ -983,17 +1464,17 @@ QWidget* Panel::buildSkins()
     auto* skinCard = card(content);
     auto* skinLayout = new QVBoxLayout(skinCard);
     skinLayout->setContentsMargins(20, 16, 20, 16);
-    skinLayout->setSpacing(8);
+    skinLayout->setSpacing(9);
     skinLayout->addWidget(caption(tr("СКИНЫ В БИБЛИОТЕКЕ"), skinCard));
     m_skinList = new QListWidget(skinCard);
-    m_skinList->setMinimumHeight(220);
+    m_skinList->setMinimumHeight(250);
     m_skinList->setSelectionMode(QAbstractItemView::SingleSelection);
     skinLayout->addWidget(m_skinList, 1);
     auto* skinButtons = new QHBoxLayout;
     skinButtons->setSpacing(8);
-    auto* pickSkin = button(tr("Выбрать PNG/GIF"), skinCard);
+    auto* pickSkin = button(tr("Выбрать файл"), skinCard, QString(), gFolder());
     connect(pickSkin, &QPushButton::clicked, this, &Panel::pickSkin);
-    auto* applySkin = button(tr("Применить"), skinCard, QStringLiteral("berryPrimary"));
+    auto* applySkin = button(tr("Применить"), skinCard, QStringLiteral("berryPrimary"), gCheck());
     connect(applySkin, &QPushButton::clicked, this, &Panel::applySelectedSkin);
     skinButtons->addWidget(pickSkin);
     skinButtons->addWidget(applySkin);
@@ -1004,46 +1485,39 @@ QWidget* Panel::buildSkins()
     auto* capeCard = card(content);
     auto* capeLayout = new QVBoxLayout(capeCard);
     capeLayout->setContentsMargins(20, 16, 20, 16);
-    capeLayout->setSpacing(8);
-    capeLayout->addWidget(caption(tr("ПЛАЩ"), capeCard));
+    capeLayout->setSpacing(9);
+    capeLayout->addWidget(caption(tr("ПЛАЩИ"), capeCard));
     m_capeList = new QListWidget(capeCard);
-    m_capeList->setMinimumHeight(160);
+    m_capeList->setMinimumHeight(190);
     m_capeList->setSelectionMode(QAbstractItemView::SingleSelection);
-    capeLayout->addWidget(m_capeList);
+    capeLayout->addWidget(m_capeList, 1);
     m_capeName = new QLabel(tr("Плащ выключен"), capeCard);
     m_capeName->setObjectName(QStringLiteral("berryDim"));
     capeLayout->addWidget(m_capeName);
-    m_skinStatus = new QLabel(tr("Quick Skin проверяется…"), capeCard);
-    m_skinStatus->setObjectName(QStringLiteral("berryDim"));
-    m_skinStatus->setWordWrap(true);
-    capeLayout->addWidget(m_skinStatus);
 
     auto* capeButtons = new QHBoxLayout;
     capeButtons->setSpacing(8);
-    auto* pickCape = button(tr("Выбрать плащ"), capeCard);
+    auto* pickCape = button(tr("Выбрать"), capeCard, QString(), gFolder());
     connect(pickCape, &QPushButton::clicked, this, &Panel::pickCape);
-    auto* applyCape = button(tr("Включить"), capeCard, QStringLiteral("berryPrimary"));
+    auto* applyCape = button(tr("Включить"), capeCard, QStringLiteral("berryPrimary"), gCheck());
     connect(applyCape, &QPushButton::clicked, this, [this] {
         auto* item = m_capeList ? m_capeList->currentItem() : nullptr;
         if (!item) {
-            m_skinStatus->setText(tr("Выбери плащ в списке."));
+            setStatusLabel(m_skinStatus, tr("Выбери плащ в списке."), theme::Warn);
             return;
         }
         QString error;
         if (!Skins::activateCape(item->data(Qt::UserRole).toString(), &error)) {
-            m_skinStatus->setText(error);
-            m_skinStatus->setStyleSheet(QStringLiteral("color:#FF6E7B;"));
+            setStatusLabel(m_skinStatus, error, theme::Err);
             return;
         }
-        m_skinStatus->setText(tr("Плащ включён: %1").arg(item->text().mid(2)));
-        m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+        setStatusLabel(m_skinStatus, tr("Плащ включён: %1").arg(item->text().mid(2)), theme::Ok);
         refreshSkins();
     });
-    auto* clearCape = button(tr("Убрать плащ"), capeCard, QStringLiteral("berryGhost"));
+    auto* clearCape = button(tr("Убрать"), capeCard, QStringLiteral("berryGhost"), gTrash());
     connect(clearCape, &QPushButton::clicked, this, [this] {
         Skins::clearCape();
-        m_skinStatus->setText(tr("Плащ выключен."));
-        m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+        setStatusLabel(m_skinStatus, tr("Плащ выключен."), theme::Ok);
         refreshSkins();
     });
     capeButtons->addWidget(pickCape);
@@ -1054,6 +1528,11 @@ QWidget* Panel::buildSkins()
     columns->addWidget(capeCard, 2);
 
     layout->addLayout(columns, 1);
+
+    m_skinStatus = new QLabel(content);
+    m_skinStatus->setWordWrap(true);
+    setStatusLabel(m_skinStatus, tr("Quick Skin проверяется…"), theme::Dim);
+    layout->addWidget(m_skinStatus);
 
     connect(m_skinList, &QListWidget::itemSelectionChanged, this, [this] {
         if (auto* item = m_skinList->currentItem())
@@ -1300,16 +1779,16 @@ QWidget* Panel::buildSettings()
     memoryLayout->addWidget(caption(tr("ПАМЯТЬ · ВСЕГО %1 ГБ").arg(totalRamGb()), memoryCard));
     auto* memoryRow = new QHBoxLayout;
     memoryRow->setSpacing(8);
-    auto* minus = button(QStringLiteral("−"), memoryCard);
-    minus->setFixedWidth(42);
-    minus->setMinimumHeight(40);
+    auto* minus = button(QString(), memoryCard, QStringLiteral("berryIcon"), gMinus());
+    minus->setToolTip(tr("Меньше памяти"));
+    minus->setAccessibleName(tr("Меньше памяти"));
     m_memory = new QSpinBox(memoryCard);
     m_memory->setRange(2, qMax(4, totalRamGb()));
     m_memory->setSuffix(tr(" ГБ"));
     m_memory->setMinimumHeight(40);
-    auto* plus = button(QStringLiteral("+"), memoryCard);
-    plus->setFixedWidth(42);
-    plus->setMinimumHeight(40);
+    auto* plus = button(QString(), memoryCard, QStringLiteral("berryIcon"), gPlus());
+    plus->setToolTip(tr("Больше памяти"));
+    plus->setAccessibleName(tr("Больше памяти"));
     connect(minus, &QPushButton::clicked, this, [this] { m_memory->setValue(m_memory->value() - 1); });
     connect(plus, &QPushButton::clicked, this, [this] { m_memory->setValue(m_memory->value() + 1); });
     connect(m_memory, &QSpinBox::valueChanged, this, &Panel::onMemoryChanged);
@@ -1420,13 +1899,13 @@ QWidget* Panel::buildDiagnostics()
 
     auto* buttons = new QHBoxLayout;
     buttons->setSpacing(10);
-    auto* refresh = button(tr("Обновить"), content);
+    auto* refresh = button(tr("Обновить"), content, QString(), gRefresh());
     connect(refresh, &QPushButton::clicked, this, &Panel::refreshDiagnostics);
-    auto* folder = button(tr("Открыть папку"), content);
+    auto* folder = button(tr("Открыть папку"), content, QString(), gFolder());
     connect(folder, &QPushButton::clicked, this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(Config::gameRoot()));
     });
-    auto* copy = button(tr("Скопировать отчёт"), content, QStringLiteral("berryPrimary"));
+    auto* copy = button(tr("Скопировать отчёт"), content, QStringLiteral("berryPrimary"), gCopy());
     connect(copy, &QPushButton::clicked, this, [this] {
         const QStringList keys{ tr("Лаунчер"), tr("Экземпляр"), tr("Java"), tr("Моды"),
                                 tr("Сборка"), tr("Память"), tr("Диск") };
@@ -1435,13 +1914,18 @@ QWidget* Panel::buildDiagnostics()
         for (int i = 0; i < keys.size() && i < m_diagValues.size(); ++i)
             report << QStringLiteral("%1: %2").arg(keys.at(i), m_diagValues.at(i)->text());
         QApplication::clipboard()->setText(report.join(QLatin1Char('\n')));
-        m_aboutStatus->setText(tr("Отчёт скопирован — его можно отправить в чат."));
+        if (m_diagStatus)
+            m_diagStatus->setText(tr("Отчёт скопирован — его можно отправить в чат."));
     });
     buttons->addWidget(refresh);
     buttons->addWidget(folder);
     buttons->addStretch(1);
     buttons->addWidget(copy);
     layout->addLayout(buttons);
+    m_diagStatus = new QLabel(tr("Отчёт собирается из текущих значений."), content);
+    m_diagStatus->setObjectName(QStringLiteral("berryDim"));
+    m_diagStatus->setWordWrap(true);
+    layout->addWidget(m_diagStatus);
     layout->addStretch(1);
 
     return page(content);
