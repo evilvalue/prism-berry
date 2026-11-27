@@ -37,6 +37,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
@@ -210,6 +212,118 @@ QString humanGb(qint64 bytes)
 
 }  // namespace
 
+
+
+class NavButton : public QPushButton {
+   public:
+    NavButton(const QString& label, const QStringList& glyph, QWidget* parent)
+        : QPushButton(label, parent), m_glyph(glyph)
+    {
+        setCheckable(true);
+        setCursor(Qt::PointingHandCursor);
+        setFocusPolicy(Qt::NoFocus);
+        setAttribute(Qt::WA_Hover, true);
+        QFont navFont = theme::semiBold(11);
+        navFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.8);
+        setFont(navFont);
+        setFixedHeight(46);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+
+        const QRectF area = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        const bool active = isChecked();
+        const bool hover = underMouse();
+        const QColor background = active ? QColor(0x19, 0x12, 0x1D) : hover ? QColor(0x12, 0x17, 0x20) : QColor(0x0C, 0x0E, 0x14);
+        const QColor border = active ? QColor(0xFF, 0x5D, 0x86) : hover ? QColor(0x2C, 0x33, 0x40) : QColor(0, 0, 0, 0);
+
+        const qreal cut = 4.0;
+        QPainterPath shape;
+        shape.moveTo(area.left() + cut, area.top());
+        shape.lineTo(area.right() - cut, area.top());
+        shape.lineTo(area.right(), area.top() + cut);
+        shape.lineTo(area.right(), area.bottom() - cut);
+        shape.lineTo(area.right() - cut, area.bottom());
+        shape.lineTo(area.left() + cut, area.bottom());
+        shape.lineTo(area.left(), area.bottom() - cut);
+        shape.lineTo(area.left(), area.top() + cut);
+        shape.closeSubpath();
+        painter.fillPath(shape, background);
+
+        if (border.alpha() > 0) {
+            painter.setPen(QPen(border, 2));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawPath(shape);
+        }
+        if (active)
+            painter.fillRect(QRectF(area.left() + 2, area.top() + 7, 4, area.height() - 14), QColor(0xFF, 0x5D, 0x86));
+
+        const QColor icon = active ? QColor(0xFF, 0x5D, 0x86) : hover ? QColor(0xE9, 0xED, 0xF5) : QColor(0x8A, 0x94, 0xA6);
+        const qreal pixel = 2.0;
+        const qreal iconX = 16.0;
+        const qreal iconY = (height() - m_glyph.size() * pixel) / 2.0;
+        painter.setPen(Qt::NoPen);
+        for (int row = 0; row < m_glyph.size(); ++row) {
+            const QString& line = m_glyph.at(row);
+            for (int column = 0; column < line.size(); ++column) {
+                if (line.at(column) == QLatin1Char('#'))
+                    painter.fillRect(QRectF(iconX + column * pixel, iconY + row * pixel, pixel, pixel), icon);
+            }
+        }
+
+        painter.setFont(font());
+        painter.setPen(active ? QColor(0xF7, 0xF9, 0xFC) : hover ? QColor(0xE9, 0xED, 0xF5) : QColor(0xA6, 0xB0, 0xC2));
+        painter.drawText(QRect(48, 0, width() - 62, height()), Qt::AlignVCenter | Qt::AlignLeft, text());
+
+        if (active)
+            painter.fillRect(QRectF(width() - 20, height() / 2.0 - 2, 4, 4), QColor(0xFF, 0x5D, 0x86));
+    }
+
+   private:
+    QStringList m_glyph;
+};
+
+QStringList navGlyph(int index)
+{
+    switch (index) {
+        case 0:
+            return { QStringLiteral("....##...."), QStringLiteral("...####..."), QStringLiteral("..######.."),
+                     QStringLiteral(".########."), QStringLiteral("##########"), QStringLiteral("...####..."),
+                     QStringLiteral("...####..."), QStringLiteral("...####..."), QStringLiteral("...####..."),
+                     QStringLiteral("...####...") };
+        case 1:
+            return { QStringLiteral("...##....."), QStringLiteral("..####...."), QStringLiteral("..####...."),
+                     QStringLiteral("...##....."), QStringLiteral(".######..."), QStringLiteral("########.."),
+                     QStringLiteral("########.."), QStringLiteral("...##....."), QStringLiteral("...##....."),
+                     QStringLiteral("..####....") };
+        case 2:
+            return { QStringLiteral("##.....##."), QStringLiteral("###...###."), QStringLiteral("##########"),
+                     QStringLiteral(".########."), QStringLiteral("...####..."), QStringLiteral("...####..."),
+                     QStringLiteral("...####..."), QStringLiteral("...####..."), QStringLiteral("...####..."),
+                     QStringLiteral("...####...") };
+        case 3:
+            return { QStringLiteral("###...####"), QStringLiteral("###...####"), QStringLiteral(".........."),
+                     QStringLiteral("####...###"), QStringLiteral("####...###"), QStringLiteral(".........."),
+                     QStringLiteral("###...####"), QStringLiteral("###...####"), QStringLiteral(".........."),
+                     QStringLiteral("..........") };
+        case 4:
+            return { QStringLiteral(".....##..."), QStringLiteral(".....##..."), QStringLiteral("...###...."),
+                     QStringLiteral("...###...."), QStringLiteral("####..####"), QStringLiteral("..###....."),
+                     QStringLiteral("....###..."), QStringLiteral(".....##..."), QStringLiteral(".....##..."),
+                     QStringLiteral("..........") };
+        default:
+            return { QStringLiteral("...###...."), QStringLiteral("..#####..."), QStringLiteral("..#####..."),
+                     QStringLiteral("....##...."), QStringLiteral("....##...."), QStringLiteral("....##...."),
+                     QStringLiteral(".........."), QStringLiteral("....##...."), QStringLiteral("....##...."),
+                     QStringLiteral("..........") };
+    }
+}
+
 Panel::Panel(QWidget* parent) : QWidget(parent)
 {
     setObjectName(QStringLiteral("berryRoot"));
@@ -259,20 +373,18 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     m_pages->setObjectName(QStringLiteral("berryPages"));
     m_pages->setAutoFillBackground(true);
 
+    sideLayout->addWidget(caption(tr("РАЗДЕЛЫ"), side));
+    sideLayout->addSpacing(4);
+
     const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("СКИНЫ"), tr("НАСТРОЙКИ"),
                               tr("ДИАГНОСТИКА"), tr("О ПРОГРАММЕ") };
-    auto* group = new QButtonGroup(this);
-    group->setExclusive(true);
+    m_nav = new QButtonGroup(this);
+    m_nav->setExclusive(true);
     for (int i = 0; i < titles.size(); ++i) {
-        auto* nav = button(QStringLiteral("%1   %2").arg(i + 1, 2, 10, QLatin1Char('0')).arg(titles.at(i)), side,
-                           QStringLiteral("berryNav"));
-        QFont navFont = theme::semiBold(11);
-        navFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.0);
-        nav->setFont(navFont);
-        nav->setCheckable(true);
-        nav->setChecked(i == 0);
-        group->addButton(nav, i);
-        sideLayout->addWidget(nav);
+        auto* navButton = new NavButton(titles.at(i), navGlyph(i), side);
+        navButton->setChecked(i == 0);
+        m_nav->addButton(navButton, i);
+        sideLayout->addWidget(navButton);
     }
 
     sideLayout->addStretch(1);
@@ -292,15 +404,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     m_pages->addWidget(buildAbout());
     m_pages->setCurrentIndex(0);
 
-    connect(group, &QButtonGroup::idClicked, this, [this](int index) {
-        m_pages->setCurrentIndex(index);
-        if (index == 1)
-            refreshAuth();
-        if (index == 2)
-            refreshSkins();
-        if (index == 4)
-            refreshDiagnostics();
-    });
+    connect(m_nav, &QButtonGroup::idClicked, this, &Panel::goToPage);
 
     root->addWidget(side);
     root->addWidget(m_pages, 1);
@@ -378,6 +482,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     refreshDiagnostics();
     startSync();
     startPing();
+
 }
 
 QWidget* Panel::page(QWidget* content)
@@ -414,23 +519,29 @@ QWidget* Panel::buildHome()
     layout->addWidget(pageHeader(content, tr("BERRYTRIP"), tr("Главное"),
                                  tr("Сборка обновляется сама, вход — через Telegram-бота.")));
 
-    // Hero with the launch action
+    auto* body = new QHBoxLayout;
+    body->setSpacing(16);
+
+    auto* left = new QVBoxLayout;
+    left->setSpacing(16);
+
+    // ------------------------------------------------------------------ hero
     auto* hero = new QFrame;
     hero->setObjectName(QStringLiteral("berryHero"));
     auto* heroRow = new QHBoxLayout(hero);
-    heroRow->setContentsMargins(24, 22, 24, 22);
-    heroRow->setSpacing(20);
+    heroRow->setContentsMargins(24, 20, 24, 20);
+    heroRow->setSpacing(18);
 
     auto* logo = new QLabel(hero);
     logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(84, 84, Qt::KeepAspectRatio, Qt::FastTransformation));
+                        .scaled(66, 66, Qt::KeepAspectRatio, Qt::FastTransformation));
     heroRow->addWidget(logo);
 
     auto* text = new QVBoxLayout;
-    text->setSpacing(6);
+    text->setSpacing(4);
     auto* title = new QLabel(QStringLiteral("BerryTrip"), hero);
     title->setObjectName(QStringLiteral("berryDisplay"));
-    QFont titleFont = theme::semiBold(38);
+    QFont titleFont = theme::semiBold(32);
     titleFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.0);
     title->setFont(titleFont);
     auto* subtitle = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), hero);
@@ -442,29 +553,28 @@ QWidget* Panel::buildHome()
     m_chip->setFont(chipFont);
     text->addWidget(title);
     text->addWidget(subtitle);
-    text->addSpacing(4);
+    text->addSpacing(3);
     text->addWidget(m_chip, 0, Qt::AlignLeft);
     heroRow->addLayout(text, 1);
 
     m_play = button(tr("Играть"), hero, QStringLiteral("berryPlay"));
-    m_play->setMinimumSize(232, 64);
+    m_play->setMinimumSize(214, 62);
     connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
     heroRow->addWidget(m_play, 0, Qt::AlignVCenter);
-    layout->addWidget(hero);
+    left->addWidget(hero);
 
-    // Server + account
+    // --------------------------------------------------------- server/account
     auto* row = new QHBoxLayout;
     row->setSpacing(16);
 
     auto* server = card(content);
     auto* serverLayout = new QVBoxLayout(server);
-    serverLayout->setContentsMargins(20, 18, 20, 18);
-    serverLayout->setSpacing(7);
+    serverLayout->setContentsMargins(20, 16, 20, 16);
+    serverLayout->setSpacing(6);
     serverLayout->addWidget(caption(tr("СЕРВЕР"), server));
     auto* address = new QLabel(Config::serverAddress(), server);
     address->setObjectName(QStringLiteral("berryMono"));
     serverLayout->addWidget(address);
-    serverLayout->addSpacing(4);
     m_motd = new QLabel(tr("Проверяю сервер…"), server);
     m_motd->setObjectName(QStringLiteral("berryH1"));
     m_motd->setWordWrap(true);
@@ -491,8 +601,8 @@ QWidget* Panel::buildHome()
 
     auto* account = card(content);
     auto* accountLayout = new QVBoxLayout(account);
-    accountLayout->setContentsMargins(20, 18, 20, 18);
-    accountLayout->setSpacing(7);
+    accountLayout->setContentsMargins(20, 16, 20, 16);
+    accountLayout->setSpacing(6);
     accountLayout->addWidget(caption(tr("АККАУНТ"), account));
     m_homeAccount = new QLabel(tr("Вход не выполнен"), account);
     m_homeAccount->setObjectName(QStringLiteral("berryH1"));
@@ -500,19 +610,16 @@ QWidget* Panel::buildHome()
     accountLayout->addWidget(m_homeAccount);
     accountLayout->addStretch(1);
     auto* openAccount = button(tr("Аккаунт →"), account);
-    connect(openAccount, &QPushButton::clicked, this, [this] {
-        m_pages->setCurrentIndex(1);
-        refreshAuth();
-    });
+    connect(openAccount, &QPushButton::clicked, this, [this] { goToPage(1); });
     accountLayout->addWidget(openAccount, 0, Qt::AlignLeft);
     row->addWidget(account, 1);
-    layout->addLayout(row);
+    left->addLayout(row);
 
-    // Pack update
+    // ------------------------------------------------------------------ sync
     auto* update = card(content);
     auto* updateLayout = new QVBoxLayout(update);
-    updateLayout->setContentsMargins(20, 18, 20, 18);
-    updateLayout->setSpacing(10);
+    updateLayout->setContentsMargins(20, 16, 20, 16);
+    updateLayout->setSpacing(8);
     updateLayout->addWidget(caption(tr("СБОРКА"), update));
     m_progress = new QProgressBar(update);
     m_progress->setTextVisible(false);
@@ -535,8 +642,46 @@ QWidget* Panel::buildHome()
     actions->addWidget(site);
     actions->addWidget(releases);
     updateLayout->addLayout(actions);
-    layout->addWidget(update);
-    layout->addStretch(1);
+    left->addWidget(update);
+    left->addStretch(1);
+
+    body->addLayout(left, 1);
+
+    // --------------------------------------------------------------- showcase
+    auto* showcase = new QFrame(content);
+    showcase->setObjectName(QStringLiteral("berryShowcase"));
+    showcase->setFixedWidth(330);
+    auto* showcaseLayout = new QVBoxLayout(showcase);
+    showcaseLayout->setContentsMargins(16, 14, 16, 14);
+    showcaseLayout->setSpacing(8);
+
+    auto* showcaseHead = new QHBoxLayout;
+    showcaseHead->addWidget(caption(tr("ТВОЙ СКИН"), showcase));
+    showcaseHead->addStretch(1);
+    auto* accent = new QLabel(QStringLiteral("◆"), showcase);
+    accent->setObjectName(QStringLiteral("berryAccent"));
+    showcaseHead->addWidget(accent);
+    showcaseLayout->addLayout(showcaseHead);
+
+    m_skinPreview = new Skin3D(showcase);
+    m_skinPreview->setMinimumSize(280, 380);
+    m_skinPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    showcaseLayout->addWidget(m_skinPreview, 1);
+
+    m_skinName = new QLabel(tr("Скин не выбран"), showcase);
+    m_skinName->setObjectName(QStringLiteral("berryDim"));
+    m_skinName->setWordWrap(true);
+    showcaseLayout->addWidget(m_skinName);
+
+    auto* showcaseFoot = new QHBoxLayout;
+    auto* openSkins = button(tr("Скины →"), showcase);
+    connect(openSkins, &QPushButton::clicked, this, [this] { goToPage(2); });
+    showcaseFoot->addWidget(openSkins);
+    showcaseFoot->addStretch(1);
+    showcaseLayout->addLayout(showcaseFoot);
+
+    body->addWidget(showcase, 0);
+    layout->addLayout(body, 1);
 
     return page(content);
 }
@@ -638,30 +783,18 @@ QWidget* Panel::buildSkins()
     layout->addWidget(pageHeader(content, tr("QUICK SKIN"), tr("Скины"),
                                  tr("Скин ставится прямо в библиотеку Quick Skin — в игре он появится сразу.")));
 
-    auto* columns = new QHBoxLayout;
-    columns->setSpacing(16);
-
-    auto* previewCard = card(content);
-    auto* previewLayout = new QVBoxLayout(previewCard);
-    previewLayout->setContentsMargins(20, 18, 20, 18);
-    previewLayout->setSpacing(10);
-    previewLayout->addWidget(caption(tr("ПРЕДПРОСМОТР"), previewCard));
-    m_skinPreview = new Skin3D(previewCard);
-    m_skinPreview->setMinimumSize(280, 380);
-    previewLayout->addWidget(m_skinPreview, 1);
-    previewLayout->addWidget(caption(tr("ПОТЯНИ МЫШЬЮ — ПОВЕРНЁТСЯ"), previewCard));
-    m_skinName = new QLabel(tr("Скин не выбран"), previewCard);
-    m_skinName->setObjectName(QStringLiteral("berryDim"));
-    m_skinName->setWordWrap(true);
-    previewLayout->addWidget(m_skinName);
+    auto* modelCard = card(content);
+    auto* modelLayout = new QVBoxLayout(modelCard);
+    modelLayout->setContentsMargins(20, 16, 20, 16);
+    modelLayout->setSpacing(8);
+    modelLayout->addWidget(caption(tr("МОДЕЛЬ"), modelCard));
 
     auto* models = new QHBoxLayout;
     models->setSpacing(6);
-    models->addWidget(caption(tr("МОДЕЛЬ"), previewCard));
-    auto* modelGroup = new QButtonGroup(previewCard);
+    auto* modelGroup = new QButtonGroup(modelCard);
     modelGroup->setExclusive(true);
     const auto addModel = [&](const QString& text, const QString& value) {
-        auto* b = button(text, previewCard, QStringLiteral("berrySegment"));
+        auto* b = button(text, modelCard, QStringLiteral("berrySegment"));
         b->setCheckable(true);
         modelGroup->addButton(b);
         connect(b, &QPushButton::clicked, this, [this, value] {
@@ -674,20 +807,24 @@ QWidget* Panel::buildSkins()
     m_modelAuto = addModel(QStringLiteral("AUTO"), QStringLiteral("auto"));
     m_modelClassic = addModel(QStringLiteral("CLASSIC"), QStringLiteral("classic"));
     m_modelSlim = addModel(QStringLiteral("SLIM"), QStringLiteral("slim"));
+    models->addSpacing(10);
+    auto* modelHint = new QLabel(tr("3D-модель показывается на главном экране."), modelCard);
+    modelHint->setObjectName(QStringLiteral("berryDim"));
+    models->addWidget(modelHint);
     models->addStretch(1);
-    previewLayout->addLayout(models);
-    columns->addWidget(previewCard, 3);
+    modelLayout->addLayout(models);
+    layout->addWidget(modelCard);
 
-    auto* right = new QVBoxLayout;
-    right->setSpacing(16);
+    auto* columns = new QHBoxLayout;
+    columns->setSpacing(16);
 
     auto* skinCard = card(content);
     auto* skinLayout = new QVBoxLayout(skinCard);
-    skinLayout->setContentsMargins(20, 18, 20, 18);
+    skinLayout->setContentsMargins(20, 16, 20, 16);
     skinLayout->setSpacing(8);
     skinLayout->addWidget(caption(tr("СКИНЫ В БИБЛИОТЕКЕ"), skinCard));
     m_skinList = new QListWidget(skinCard);
-    m_skinList->setMinimumHeight(150);
+    m_skinList->setMinimumHeight(220);
     m_skinList->setSelectionMode(QAbstractItemView::SingleSelection);
     skinLayout->addWidget(m_skinList, 1);
     auto* skinButtons = new QHBoxLayout;
@@ -700,15 +837,15 @@ QWidget* Panel::buildSkins()
     skinButtons->addWidget(applySkin);
     skinButtons->addStretch(1);
     skinLayout->addLayout(skinButtons);
-    right->addWidget(skinCard, 1);
+    columns->addWidget(skinCard, 3);
 
     auto* capeCard = card(content);
     auto* capeLayout = new QVBoxLayout(capeCard);
-    capeLayout->setContentsMargins(20, 18, 20, 18);
+    capeLayout->setContentsMargins(20, 16, 20, 16);
     capeLayout->setSpacing(8);
     capeLayout->addWidget(caption(tr("ПЛАЩ"), capeCard));
     m_capeList = new QListWidget(capeCard);
-    m_capeList->setMinimumHeight(90);
+    m_capeList->setMinimumHeight(160);
     m_capeList->setSelectionMode(QAbstractItemView::SingleSelection);
     capeLayout->addWidget(m_capeList);
     m_capeName = new QLabel(tr("Плащ выключен"), capeCard);
@@ -752,12 +889,9 @@ QWidget* Panel::buildSkins()
     capeButtons->addWidget(clearCape);
     capeButtons->addStretch(1);
     capeLayout->addLayout(capeButtons);
-    right->addWidget(capeCard);
-    right->addStretch(1);
-    columns->addLayout(right, 2);
+    columns->addWidget(capeCard, 2);
 
-    layout->addLayout(columns);
-    layout->addStretch(1);
+    layout->addLayout(columns, 1);
 
     connect(m_skinList, &QListWidget::itemSelectionChanged, this, [this] {
         if (auto* item = m_skinList->currentItem())
@@ -789,18 +923,28 @@ void Panel::refreshSkins()
     m_modelSlim->setChecked(model == QLatin1String("slim"));
 
     m_skinList->clear();
+    QListWidgetItem* activeSkinItem = nullptr;
     for (const auto& entry : Skins::entries(false)) {
         auto* item = new QListWidgetItem((entry.active ? QStringLiteral("● ") : QStringLiteral("   ")) + entry.name, m_skinList);
         item->setData(Qt::UserRole, entry.path);
-        item->setToolTip(entry.size + QLatin1Char('\n') + entry.path);
+        item->setToolTip(entry.size + QChar(10) + entry.path);
+        if (entry.active)
+            activeSkinItem = item;
     }
+    if (activeSkinItem)
+        m_skinList->setCurrentItem(activeSkinItem);
 
     m_capeList->clear();
+    QListWidgetItem* activeCapeItem = nullptr;
     for (const auto& entry : Skins::entries(true)) {
         auto* item = new QListWidgetItem((entry.active ? QStringLiteral("● ") : QStringLiteral("   ")) + entry.name, m_capeList);
         item->setData(Qt::UserRole, entry.path);
-        item->setToolTip(entry.size + QLatin1Char('\n') + entry.path);
+        item->setToolTip(entry.size + QChar(10) + entry.path);
+        if (entry.active)
+            activeCapeItem = item;
     }
+    if (activeCapeItem)
+        m_capeList->setCurrentItem(activeCapeItem);
 
     const QString current = Skins::currentSkin();
     refreshSkinPreview(current);
@@ -1232,6 +1376,19 @@ bool Panel::signedIn() const
     return m_auth && m_auth->tokenState() == TelegramAuth::TokenState::Ok;
 }
 
+void Panel::goToPage(int index)
+{
+    m_pages->setCurrentIndex(index);
+    if (m_nav && m_nav->button(index))
+        m_nav->button(index)->setChecked(true);
+    if (index == 1)
+        refreshAuth();
+    if (index == 2)
+        refreshSkins();
+    if (index == 4)
+        refreshDiagnostics();
+}
+
 void Panel::refreshAuth()
 {
     const auto state = m_auth->tokenState();
@@ -1459,7 +1616,7 @@ void Panel::onPlay()
         return;
 
     if (!signedIn()) {
-        m_pages->setCurrentIndex(1);
+        goToPage(1);
         m_authStatus->setText(tr("Сначала войди через Telegram-бота."));
         return;
     }
@@ -1489,8 +1646,7 @@ void installSoloUi(QMainWindow* window)
 
     window->installEventFilter(new OverlayFilter(panel, window));
     qApp->installEventFilter(new PopupFilter(panel, qApp));
-    window->setMinimumSize(1000, 700);
-    window->resize(1240, 800);
+    window->setFixedSize(1240, 760);
 }
 
 }  // namespace berry

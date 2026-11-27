@@ -12,6 +12,7 @@
 #include <QVector>
 #include <QWidget>
 
+class QButtonGroup;
 class QCheckBox;
 class QLabel;
 class QLineEdit;
@@ -63,6 +64,7 @@ class Panel : public QWidget {
     void applyTweaks(const QString& note);
     void checkUpdates();
     bool signedIn() const;
+    void goToPage(int index);
 
     void refreshSkins();
     void pickSkin();
@@ -77,6 +79,7 @@ class Panel : public QWidget {
     ServerPing* m_ping = nullptr;
     QTimer* m_pollTimer = nullptr;
     QStackedWidget* m_pages = nullptr;
+    QButtonGroup* m_nav = nullptr;
     bool m_syncFinished = false;
     bool m_loading = false;
     QString m_statusBase;

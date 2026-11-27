@@ -95,6 +95,7 @@ QLabel#berryErr { color: #FF6E7B; }
 /* ---------- surfaces ---------- */
 QFrame#berryCard { background: #141821; border: 2px solid #262C38; }
 QFrame#berryHero { background: #141821; border: 2px solid #FF5D86; }
+QFrame#berryShowcase { background: #0F131B; border: 2px solid #2C2333; }
 QFrame#berryInset { background: #0E1219; border: 2px solid #20252F; }
 QFrame#berryRule { background: #262C38; border: none; min-height: 2px; max-height: 2px; }
 QFrame#berryGap { background: transparent; border: none; }

@@ -9,23 +9,24 @@
 
 #pragma once
 
+#include <QElapsedTimer>
 #include <QImage>
-#include <QPoint>
+#include <QPointF>
 #include <QPolygonF>
 #include <QRectF>
 #include <QVector>
-#include <QVector3D>
 #include <QWidget>
 
+class QMouseEvent;
 class QShowEvent;
 class QHideEvent;
-
 class QTimer;
 
 namespace berry {
 
-/// Software-rendered 3D preview of a Minecraft skin: the same orthographic
-/// model Quick Skin draws, with auto-rotation and drag-to-rotate.
+/// Preview of a Minecraft skin, ported from Quick Skin's in-game preview:
+/// the vanilla 64x64 player model with its 0.25 px outer layers and 0.5 px
+/// hat, vanilla-style face lighting, the CALM idle stance and drag-to-turn.
 class Skin3D : public QWidget {
     Q_OBJECT
 
@@ -35,15 +36,18 @@ class Skin3D : public QWidget {
     void setSkin(const QImage& skin);
     void setCape(const QImage& cape);
     void setSlim(bool slim);
+    void setYaw(qreal degrees);
     void resetView();
 
     QSize sizeHint() const override;
+    QSize minimumSizeHint() const override;
 
    protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void showEvent(QShowEvent* event) override;
     void hideEvent(QHideEvent* event) override;
 
@@ -52,23 +56,26 @@ class Skin3D : public QWidget {
         QPolygonF screen;
         QRectF uv;
         QImage texture;
-        qreal depth = 0;
-        bool overlay = false;
+        qreal depth = 0.0;
     };
 
+    void rebuildShades();
+    void collectModel(QVector<Face>& faces) const;
+    void collectPart(QVector<Face>& faces, const QVector<QImage>& textures, qreal w, qreal h, qreal d,
+                     qreal cx, qreal cy, qreal cz, qreal px, qreal py, qreal pz, qreal rx, qreal ry,
+                     qreal rz, QPoint uvBase, qreal inflate) const;
     void drawModel(QPainter& painter);
-    void collectPart(QVector<Face>& faces, const QImage& texture, qreal sizeW, qreal sizeH, qreal sizeD,
-                     qreal cx, qreal cy, qreal cz, QPoint uvBase, qreal inflate, bool capePart) const;
 
     QImage m_skin;
     QImage m_cape;
+    QVector<QImage> m_skinShades;
+    QVector<QImage> m_capeShades;
     bool m_slim = false;
-    qreal m_yaw = 22.0;
-    qreal m_pitch = 0.0;
-    qreal m_sway = 0.0;
-    QPoint m_drag;
+    qreal m_yaw = 20.0;
+    qreal m_targetYaw = 20.0;
+    QPointF m_drag;
     bool m_dragging = false;
-    qint64 m_lastDrag = 0;
+    QElapsedTimer m_clock;
     QTimer* m_timer = nullptr;
 };
 
