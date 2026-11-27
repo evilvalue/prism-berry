@@ -2847,8 +2847,9 @@ void installSoloUi(QMainWindow* window)
 
     // Keep running when the window goes away: closing it hides BerryTrip to the
     // tray instead of killing a download or the game that was just launched.
-    qApp->setQuitOnLastWindowClosed(false);
+    // Without a tray the default holds, so closing the last window still quits.
     if (QSystemTrayIcon::isSystemTrayAvailable()) {
+        qApp->setQuitOnLastWindowClosed(false);
         auto* tray = new QSystemTrayIcon(window);
         tray->setIcon(QIcon(theme::pixelArt(gLogoSprite(), theme::Accent, 4)));
         tray->setToolTip(QStringLiteral("BerryTrip %1").arg(Config::version()));
