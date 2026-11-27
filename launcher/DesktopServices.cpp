@@ -107,8 +107,9 @@ Result<winrt::com_ptr<IShellLink>> createShellLink(const QString& path,
         winrt::check_hresult(shellLink->SetWorkingDirectory(workDir.toStdWString().c_str()));
         winrt::check_hresult(shellLink->SetIconLocation(iconPath.toStdWString().c_str(), 0));
     } catch (const winrt::hresult_error& e) {
-        const auto message = e.message();
-        return std::unexpected("Error creating shell link: " + message);
+        // Fork fix: hstring does not concatenate with a narrow literal, so convert explicitly.
+        const auto message = QString::fromStdWString(e.message().c_str());
+        return std::unexpected(QStringLiteral("Error creating shell link: ") + message);
     }
 
     return shellLink;

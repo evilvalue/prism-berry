@@ -1,5 +1,7 @@
 project(application)
 
+option(BERRY_SOLO "Build the single-server BerryTrip launcher" OFF)
+
 ################################ FILES ################################
 
 ######## Sources and headers ########
@@ -1188,6 +1190,19 @@ if(WIN32)
     )
 endif()
 
+if(BERRY_SOLO)
+    set(LAUNCHER_SOURCES
+        ${LAUNCHER_SOURCES}
+
+        berry/BerryConfig.h
+        berry/BerryConfig.cpp
+        berry/BerryInstance.h
+        berry/BerryInstance.cpp
+        berry/BerryPackSync.h
+        berry/BerryPackSync.cpp
+    )
+endif()
+
 qt_add_resources(LAUNCHER_RESOURCES
     resources/backgrounds/backgrounds.qrc
     resources/multimc/multimc.qrc
@@ -1226,6 +1241,10 @@ endif()
 add_library(Launcher_logic STATIC ${LOGIC_SOURCES} ${LAUNCHER_SOURCES} ${LAUNCHER_RESOURCES})
 target_include_directories(Launcher_logic PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(Launcher_logic PUBLIC LAUNCHER_APPLICATION)
+
+if(BERRY_SOLO)
+    target_compile_definitions(Launcher_logic PUBLIC BERRY_SOLO)
+endif()
 
 if(${Launcher_USE_PCH})
     target_precompile_headers(Launcher_logic PRIVATE ${PRECOMPILED_HEADERS})
