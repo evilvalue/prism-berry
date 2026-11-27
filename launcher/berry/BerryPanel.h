@@ -14,6 +14,7 @@
 
 class QButtonGroup;
 class QCheckBox;
+class QFrame;
 class QLabel;
 class QLineEdit;
 class QListWidget;
@@ -29,6 +30,7 @@ namespace berry {
 
 class PackSync;
 class ServerPing;
+class Updater;
 class Skin3D;
 class TelegramAuth;
 
@@ -63,6 +65,7 @@ class Panel : public QWidget {
     void onJavaEdited();
     void applyTweaks(const QString& note);
     void checkUpdates();
+    void installUpdate();
     bool signedIn() const;
     void goToPage(int index);
 
@@ -121,6 +124,17 @@ class Panel : public QWidget {
 
     QVector<QLabel*> m_diagValues;
     QLabel* m_aboutStatus = nullptr;
+
+    Updater* m_updater = nullptr;
+    QFrame* m_updateBanner = nullptr;
+    QLabel* m_updateText = nullptr;
+    QPushButton* m_updateButton = nullptr;
+    QProgressBar* m_updateProgress = nullptr;
+    QPushButton* m_aboutUpdate = nullptr;
+    QString m_updateVersion;
+    QString m_updatePageUrl;
+    bool m_updateReady = false;
+    bool m_updateCanAuto = false;
 };
 
 /// Hides Prism's instance manager and puts the BerryTrip UI in its place.

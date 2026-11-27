@@ -23,6 +23,7 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QImageReader>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -64,6 +65,7 @@
 #include "berry/BerrySkin3D.h"
 #include "berry/BerryTheme.h"
 #include "berry/BerryTweaks.h"
+#include "berry/BerryUpdater.h"
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/launch/MinecraftTarget.h"
 #include "settings/SettingsObject.h"
@@ -336,6 +338,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
     m_auth = new TelegramAuth(this);
     m_ping = new ServerPing(this);
+    m_updater = new Updater(this);
 
     auto* root = new QHBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
@@ -483,6 +486,112 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     startSync();
     startPing();
 
+    connect(m_updater, &Updater::checking, this, [this] {
+        if (m_aboutStatus)
+            m_aboutStatus->setText(tr("Проверяю GitHub…"));
+    });
+    connect(m_updater, &Updater::upToDate, this, [this](const QString& version) {
+        if (m_updateBanner)
+            m_updateBanner->hide();
+        if (m_aboutUpdate)
+            m_aboutUpdate->hide();
+        m_updateReady = false;
+        if (m_aboutStatus) {
+            m_aboutStatus->setText(tr("Установлена последняя версия: %1").arg(version));
+            m_aboutStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+        }
+    });
+    connect(m_updater, &Updater::available, this,
+            [this](const QString& version, const QString&, const QUrl& releasePage, const QUrl& installerUrl,
+                   const QString&, qint64) {
+                m_updateVersion = version;
+                m_updatePageUrl = releasePage.toString();
+                m_updateCanAuto = !installerUrl.isEmpty();
+                m_updateReady = false;
+                if (m_updateBanner) {
+                    m_updateBanner->show();
+                    m_updateText->setText(tr("Доступно обновление BerryTrip %1.").arg(version));
+                    m_updateButton->setText(m_updateCanAuto ? tr("Скачать") : tr("Открыть релиз"));
+                    m_updateButton->setEnabled(true);
+                    m_updateProgress->hide();
+                }
+                if (m_aboutUpdate) {
+                    m_aboutUpdate->setText(m_updateCanAuto ? tr("Скачать обновление") : tr("Открыть релиз"));
+                    m_aboutUpdate->setEnabled(true);
+                    m_aboutUpdate->show();
+                }
+                if (m_aboutStatus) {
+                    m_aboutStatus->setText(tr("Доступна версия %1.").arg(version));
+                    m_aboutStatus->setStyleSheet(QStringLiteral("color:#FF5D86;"));
+                }
+            });
+    connect(m_updater, &Updater::checkFailed, this, [this](const QString& error) {
+        if (m_updateBanner)
+            m_updateBanner->hide();
+        if (m_aboutUpdate)
+            m_aboutUpdate->hide();
+        if (m_aboutStatus) {
+            m_aboutStatus->setText(tr("Не удалось проверить обновление: %1").arg(error));
+            m_aboutStatus->setStyleSheet(QStringLiteral("color:#F5B942;"));
+        }
+    });
+    connect(m_updater, &Updater::downloading, this, [this](const QString& version) {
+        if (m_updateBanner) {
+            m_updateBanner->show();
+            m_updateText->setText(tr("Скачиваю BerryTrip %1…").arg(version));
+            m_updateButton->setText(tr("Скачивание…"));
+            m_updateButton->setEnabled(false);
+            m_updateProgress->setRange(0, 0);
+            m_updateProgress->show();
+        }
+        if (m_aboutStatus)
+            m_aboutStatus->setText(tr("Скачиваю обновление %1…").arg(version));
+    });
+    connect(m_updater, &Updater::downloadProgress, this, [this](qint64 received, qint64 total) {
+        const int percent = total > 0 ? static_cast<int>((received * 100) / total) : 0;
+        if (m_updateProgress && total > 0) {
+            m_updateProgress->setRange(0, 100);
+            m_updateProgress->setValue(percent);
+        }
+        if (m_updateText && total > 0)
+            m_updateText->setText(tr("Скачиваю обновление: %1%").arg(percent));
+        if (m_aboutStatus && total > 0)
+            m_aboutStatus->setText(tr("Скачиваю обновление: %1%").arg(percent));
+    });
+    connect(m_updater, &Updater::readyToInstall, this, [this](const QString&) {
+        m_updateReady = true;
+        m_updateCanAuto = true;
+        if (m_updateBanner) {
+            m_updateBanner->show();
+            m_updateText->setText(tr("Обновление %1 загружено и проверено.").arg(m_updateVersion));
+            m_updateButton->setText(tr("Установить"));
+            m_updateButton->setEnabled(true);
+            m_updateProgress->hide();
+        }
+        if (m_aboutUpdate) {
+            m_aboutUpdate->setText(tr("Перезапустить и установить"));
+            m_aboutUpdate->setEnabled(true);
+            m_aboutUpdate->show();
+        }
+        if (m_aboutStatus)
+            m_aboutStatus->setText(tr("Можно установить обновление %1.").arg(m_updateVersion));
+    });
+    connect(m_updater, &Updater::failed, this, [this](const QString& error) {
+        if (m_updateBanner) {
+            m_updateBanner->show();
+            m_updateText->setText(error);
+            m_updateButton->setText(m_updateCanAuto ? tr("Повторить") : tr("Открыть релиз"));
+            m_updateButton->setEnabled(true);
+            m_updateProgress->hide();
+        }
+        if (m_aboutStatus) {
+            m_aboutStatus->setText(error);
+            m_aboutStatus->setStyleSheet(QStringLiteral("color:#FF6E7B;"));
+        }
+    });
+
+    QTimer::singleShot(6000, this, [this] { checkUpdates(); });
+
 }
 
 QWidget* Panel::page(QWidget* content)
@@ -562,6 +671,31 @@ QWidget* Panel::buildHome()
     connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
     heroRow->addWidget(m_play, 0, Qt::AlignVCenter);
     left->addWidget(hero);
+
+    // ------------------------------------------------------ launcher update
+    m_updateBanner = new QFrame(content);
+    m_updateBanner->setObjectName(QStringLiteral("berryUpdate"));
+    auto* updateBannerLayout = new QVBoxLayout(m_updateBanner);
+    updateBannerLayout->setContentsMargins(18, 14, 18, 14);
+    updateBannerLayout->setSpacing(8);
+    auto* updateHead = new QHBoxLayout;
+    updateHead->setSpacing(10);
+    updateHead->addWidget(caption(tr("ОБНОВЛЕНИЕ ЛАУНЧЕРА"), m_updateBanner));
+    updateHead->addStretch(1);
+    m_updateButton = button(tr("Скачать"), m_updateBanner, QStringLiteral("berryPrimary"));
+    connect(m_updateButton, &QPushButton::clicked, this, &Panel::installUpdate);
+    updateHead->addWidget(m_updateButton);
+    updateBannerLayout->addLayout(updateHead);
+    m_updateText = new QLabel(tr("Доступна новая версия."), m_updateBanner);
+    m_updateText->setObjectName(QStringLiteral("berryMuted"));
+    m_updateText->setWordWrap(true);
+    updateBannerLayout->addWidget(m_updateText);
+    m_updateProgress = new QProgressBar(m_updateBanner);
+    m_updateProgress->setTextVisible(false);
+    m_updateProgress->hide();
+    updateBannerLayout->addWidget(m_updateProgress);
+    m_updateBanner->hide();
+    left->addWidget(m_updateBanner);
 
     // --------------------------------------------------------- server/account
     auto* row = new QHBoxLayout;
@@ -1358,9 +1492,17 @@ QWidget* Panel::buildAbout()
     updateLayout->setContentsMargins(20, 18, 20, 18);
     updateLayout->setSpacing(8);
     updateLayout->addWidget(caption(tr("ОБНОВЛЕНИЕ"), updateCard));
+    auto* updateButtons = new QHBoxLayout;
+    updateButtons->setSpacing(8);
     auto* check = button(tr("Проверить обновление"), updateCard, QStringLiteral("berryPrimary"));
     connect(check, &QPushButton::clicked, this, &Panel::checkUpdates);
-    updateLayout->addWidget(check);
+    updateButtons->addWidget(check);
+    m_aboutUpdate = button(tr("Скачать обновление"), updateCard);
+    m_aboutUpdate->hide();
+    connect(m_aboutUpdate, &QPushButton::clicked, this, &Panel::installUpdate);
+    updateButtons->addWidget(m_aboutUpdate);
+    updateButtons->addStretch(1);
+    updateLayout->addLayout(updateButtons);
     m_aboutStatus = new QLabel(tr("Сборка обновляется сама при запуске."), updateCard);
     m_aboutStatus->setObjectName(QStringLiteral("berryDim"));
     m_aboutStatus->setWordWrap(true);
@@ -1579,35 +1721,47 @@ void Panel::refreshDiagnostics()
 
 void Panel::checkUpdates()
 {
-    m_aboutStatus->setText(tr("Проверяю…"));
+    if (!m_updater || m_updater->isDownloading())
+        return;
+    if (m_aboutStatus) {
+        m_aboutStatus->setText(tr("Проверяю GitHub…"));
+        m_aboutStatus->setStyleSheet(QStringLiteral("color:#7C8798;"));
+    }
+    m_updater->check();
+}
 
-    QNetworkRequest request(QUrl(QStringLiteral("https://api.github.com/repos/evilvalue/prism-berry/releases/latest")));
-    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("BerryTrip/") + Config::version());
-    request.setTransferTimeout(10000);
+void Panel::installUpdate()
+{
+    if (!m_updater)
+        return;
 
-    auto* reply = APPLICATION->network()->get(request);
-    connect(reply, &QNetworkReply::finished, this, [this, reply] {
-        const QByteArray body = reply->readAll();
-        const bool failed = reply->error() != QNetworkReply::NoError;
-        reply->deleteLater();
-        if (failed) {
-            m_aboutStatus->setText(tr("Проверка не удалась — открой «Релизы» вручную."));
+    if (m_updateReady) {
+        if (m_instance && m_instance->isRunning()) {
+            const QString message = tr("Сначала закрой Minecraft — обновление заменит файлы лаунчера.");
+            if (m_updateText)
+                m_updateText->setText(message);
+            if (m_aboutStatus)
+                m_aboutStatus->setText(message);
             return;
         }
-        const QString tag = QJsonDocument::fromJson(body).object().value(QStringLiteral("tag_name")).toString();
-        if (tag.isEmpty()) {
-            m_aboutStatus->setText(tr("Релизов пока нет."));
+        QString error;
+        if (!m_updater->install(&error)) {
+            if (m_updateText)
+                m_updateText->setText(error);
+            if (m_aboutStatus)
+                m_aboutStatus->setText(error);
             return;
         }
-        const QString latest = tag.startsWith(QLatin1Char('v')) ? tag.mid(1) : tag;
-        if (latest == Config::version()) {
-            m_aboutStatus->setText(tr("Установлена последняя версия: %1").arg(Config::version()));
-            m_aboutStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
-        } else {
-            m_aboutStatus->setText(tr("Доступна версия %1 — скачай её со страницы релизов.").arg(latest));
-            m_aboutStatus->setStyleSheet(QStringLiteral("color:#FF5D86;"));
-        }
-    });
+        QApplication::quit();
+        return;
+    }
+
+    if (!m_updateCanAuto) {
+        if (!m_updatePageUrl.isEmpty())
+            QDesktopServices::openUrl(QUrl(m_updatePageUrl));
+        return;
+    }
+    m_updater->download();
 }
 
 void Panel::onPlay()
