@@ -49,7 +49,7 @@ Section "BerryTrip" SEC01
   File /r "..\dist\*"
   File "..\LICENSE"
   File "..\NOTICE.md"
-  File "..\launchererryesources\MinecraftRus-COPYRIGHT.txt"
+  File "..\launcher\berry\resources\MinecraftRus-COPYRIGHT.txt"
 
   WriteUninstaller "$INSTDIR\uninstall.exe"
 
