@@ -571,12 +571,9 @@ void AccountList::setListFilePath(QString path, bool autosave)
 
 bool AccountList::anyAccountIsValid()
 {
-    for (auto account : m_accounts) {
-        if (account->ownsMinecraft()) {
-            return true;
-        }
-    }
-    return false;
+    // An empty list must not force the Microsoft login wizard: offline accounts
+    // are valid here, and the launcher creates one on its own.
+    return true;
 }
 
 void AccountList::fillQueue()

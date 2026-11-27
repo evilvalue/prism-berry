@@ -442,7 +442,17 @@ bool TelegramAuth::useOfflineAccount(const QString& nick)
     if (!accounts || nick.isEmpty())
         return false;
 
-    auto account = accounts->getAccountByProfileName(nick);
+    // Pick only an offline account. An MSA account with the same profile name
+    // must never be selected, otherwise the game would try to refresh it.
+    MinecraftAccountPtr account;
+    for (int i = 0; i < accounts->count(); ++i) {
+        const auto candidate = accounts->at(i);
+        if (candidate->accountType() == AccountType::Offline &&
+            candidate->profileName().compare(nick, Qt::CaseInsensitive) == 0) {
+            account = candidate;
+            break;
+        }
+    }
     if (!account) {
         account = MinecraftAccount::createOffline(nick);
         if (!account)

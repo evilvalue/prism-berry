@@ -116,7 +116,9 @@ class MinecraftAccount : public QObject, public Usable {
 
     AccountType accountType() const noexcept { return data.type; }
 
-    bool ownsMinecraft() const { return data.type != AccountType::Offline && data.minecraftEntitlement.ownsMinecraft; }
+    // Offline accounts are always playable: BerryTrip has its own Telegram login
+    // and its server does not use Mojang/Microsoft sessions.
+    bool ownsMinecraft() const { return data.type != AccountType::MSA || data.minecraftEntitlement.ownsMinecraft; }
 
     bool hasProfile() const { return data.profileId().size() != 0; }
 

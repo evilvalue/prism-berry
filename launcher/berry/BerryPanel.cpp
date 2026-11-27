@@ -428,6 +428,15 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     if (m_instance->settings()->get(QStringLiteral("OverrideJavaLocation")).toBool())
         m_javaPath->setText(QDir::toNativeSeparators(m_instance->settings()->get(QStringLiteral("JavaPath")).toString()));
     m_nick->setText(m_auth->nick().isEmpty() ? QString() : m_auth->nick());
+
+    // Always keep an offline account selected, so Minecraft never asks for a
+    // Microsoft login. The saved Telegram nick is used when it is known.
+    QString accountNick = m_auth->tokenNick();
+    if (accountNick.isEmpty())
+        accountNick = m_auth->nick();
+    if (accountNick.isEmpty())
+        accountNick = QStringLiteral("Player");
+    TelegramAuth::useOfflineAccount(accountNick);
     for (int i = 0; i < Tweaks::mods().size(); ++i)
         m_modChecks.at(i)->setChecked(Tweaks::modEnabled(Tweaks::mods().at(i)));
     m_packs->setChecked(Tweaks::packsEnabled());
