@@ -17,6 +17,9 @@ namespace berry {
 /// Everything about the one server this build exists for.
 class Config {
    public:
+    /// Version of the BerryTrip launcher itself (not the Minecraft pack).
+    static QString version();
+
     /// Folder name of the instance in the launcher's instances directory.
     static QString instanceId();
     /// Human readable name shown by the UI.

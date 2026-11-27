@@ -1204,6 +1204,12 @@ if(BERRY_SOLO)
         berry/BerryPanel.cpp
         berry/BerryPackSync.h
         berry/BerryPackSync.cpp
+        berry/BerryPing.h
+        berry/BerryPing.cpp
+        berry/BerryTheme.h
+        berry/BerryTheme.cpp
+        berry/BerryTweaks.h
+        berry/BerryTweaks.cpp
     )
 endif()
 
@@ -1222,6 +1228,10 @@ qt_add_resources(LAUNCHER_RESOURCES
     resources/shaders/shaders.qrc
     "${CMAKE_CURRENT_BINARY_DIR}/../${Launcher_Branding_LogoQRC}"
 )
+
+if(BERRY_SOLO)
+    qt_add_resources(LAUNCHER_RESOURCES berry/berry.qrc)
+endif()
 
 ######## Windows resource files ########
 if(WIN32)
