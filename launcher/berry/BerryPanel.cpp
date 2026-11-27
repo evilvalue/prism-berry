@@ -9,6 +9,7 @@
 
 #include "berry/BerryPanel.h"
 
+#include <QAction>
 #include <QApplication>
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -36,6 +37,7 @@
 #include <QProgressDialog>
 #include <QWizard>
 #include <QMainWindow>
+#include <QMenu>
 #include <QMenuBar>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -51,6 +53,7 @@
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStorageInfo>
+#include <QSystemTrayIcon>
 #include <QTimer>
 #include <QToolBar>
 #include <QUrl>
@@ -130,6 +133,35 @@ class PopupFilter : public QObject {
     Panel* m_panel;
 };
 
+/// The close button hides the launcher instead of quitting it, so a running
+/// download or a just-launched game is not cut off. The tray icon brings it back.
+class TrayFilter : public QObject {
+   public:
+    TrayFilter(QWidget* window, QSystemTrayIcon* tray) : QObject(window), m_window(window), m_tray(tray) {}
+
+   protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (watched == m_window && event->type() == QEvent::Close) {
+            event->ignore();
+            m_window->hide();
+            if (!m_hinted) {
+                m_hinted = true;
+                m_tray->showMessage(QObject::tr("BerryTrip свёрнут в трей"),
+                                    QObject::tr("Лаунчер продолжает работать. Клик по значку вернёт окно."),
+                                    QSystemTrayIcon::Information, 4000);
+            }
+            return true;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+   private:
+    QWidget* m_window;
+    QSystemTrayIcon* m_tray;
+    bool m_hinted = false;
+};
+
 // --------------------------------------------------------------- pixel icons
 // Every glyph is a 16x16 grid drawn at 1:1. Shapes use whole pixels only:
 // no antialiasing, no half-pixel outlines, one light source (top-left).
@@ -164,10 +196,10 @@ const QStringList& gSkin()
 {
     static const QStringList g{ QStringLiteral("................"), QStringLiteral("....##....##...."),
                                 QStringLiteral("...####..####..."), QStringLiteral("..############.."),
-                                QStringLiteral(".##############."), QStringLiteral(".###........###."),
-                                QStringLiteral("....##....##...."), QStringLiteral("....##....##...."),
-                                QStringLiteral("....##....##...."), QStringLiteral("....##....##...."),
-                                QStringLiteral("....##....##...."), QStringLiteral("................"),
+                                QStringLiteral(".##############."), QStringLiteral(".###..####..###."),
+                                QStringLiteral("...##..##..##..."), QStringLiteral("...##..##..##..."),
+                                QStringLiteral("...##..##..##..."), QStringLiteral("...##..##..##..."),
+                                QStringLiteral("...##..##..##..."), QStringLiteral("...##########..."),
                                 QStringLiteral("................"), QStringLiteral("................"),
                                 QStringLiteral("................"), QStringLiteral("................") };
     return g;
@@ -175,13 +207,13 @@ const QStringList& gSkin()
 
 const QStringList& gSettings()
 {
-    static const QStringList g{ QStringLiteral("................"), QStringLiteral("....##.........."),
-                                QStringLiteral(".##########....."), QStringLiteral("....##.........."),
-                                QStringLiteral("................"), QStringLiteral(".........##....."),
-                                QStringLiteral(".##########....."), QStringLiteral(".........##....."),
-                                QStringLiteral("................"), QStringLiteral("....##.........."),
-                                QStringLiteral(".##########....."), QStringLiteral("....##.........."),
-                                QStringLiteral("................"), QStringLiteral("................"),
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral(".#############.."), QStringLiteral(".....##........."),
+                                QStringLiteral(".....##........."), QStringLiteral("................"),
+                                QStringLiteral("..#############."), QStringLiteral("........###....."),
+                                QStringLiteral("........###....."), QStringLiteral("................"),
+                                QStringLiteral(".#############.."), QStringLiteral("....##.........."),
+                                QStringLiteral("....##.........."), QStringLiteral("................"),
                                 QStringLiteral("................"), QStringLiteral("................") };
     return g;
 }
@@ -481,14 +513,447 @@ const QStringList& gDot()
     return g;
 }
 
-const QColor IconFg(0xE9, 0xED, 0xF5);
-const QColor IconDark(0x1A, 0x0B, 0x11);
-const QColor IconMuted(0x8A, 0x94, 0xA6);
+const QColor IconFg(0xEC, 0xF1, 0xF8);
+const QColor IconDark(0x14, 0x07, 0x0C);
+const QColor IconMuted(0x8C, 0x98, 0xAC);
 
+// ------------------------------------------------------------- extra glyphs
+const QStringList& gServer()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral("..############.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("..#.##.##.##.#.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("..############.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("..#.##.##.##.#.."),
+                                QStringLiteral("..#..........#.."), QStringLiteral("..############.."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gWarn()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".......##......."),
+                                QStringLiteral("......####......"), QStringLiteral("......####......"),
+                                QStringLiteral(".....##..##....."), QStringLiteral(".....##..##....."),
+                                QStringLiteral("....##....##...."), QStringLiteral("....##....##...."),
+                                QStringLiteral("...##......##..."), QStringLiteral("...##########..."),
+                                QStringLiteral("...##......##..."), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gClock()
+{
+    static const QStringList g{ QStringLiteral("................"), QStringLiteral(".....######....."),
+                                QStringLiteral("...##......##..."), QStringLiteral("..#....##....#.."),
+                                QStringLiteral("..#....##....#.."), QStringLiteral(".#.....##.....#."),
+                                QStringLiteral(".#.....##.....#."), QStringLiteral(".#.....##.....#."),
+                                QStringLiteral(".#.....###....#."), QStringLiteral("..#..........#.."),
+                                QStringLiteral("...##......##..."), QStringLiteral(".....######....."),
+                                QStringLiteral("................"), QStringLiteral("................"),
+                                QStringLiteral("................"), QStringLiteral("................") };
+    return g;
+}
+
+const QStringList& gLogoSprite()
+{
+    static const QStringList g{
+        QStringLiteral("................"),
+        QStringLiteral(".......gg......."),
+        QStringLiteral("......gGGg......"),
+        QStringLiteral("....gGg..gGg...."),
+        QStringLiteral("...gG......Gg..."),
+        QStringLiteral(".....oooooo....."),
+        QStringLiteral("....o######o...."),
+        QStringLiteral("...o##+#####o..."),
+        QStringLiteral("..o#+#######-o.."),
+        QStringLiteral("..o##########o.."),
+        QStringLiteral("..o##########o.."),
+        QStringLiteral("..o-##-###--#o.."),
+        QStringLiteral("...o-######-o..."),
+        QStringLiteral("....o######o...."),
+        QStringLiteral(".....oooooo....."),
+        QStringLiteral("................"),
+    };
+    return g;
+}
+
+// ------------------------------------------------------------------ painting
+void dither(QPainter& painter, const QRect& area, const QColor& base, const QColor& dot, int step)
+{
+    painter.fillRect(area, base);
+    for (int y = area.top(); y < area.bottom(); y += step) {
+        for (int x = area.left() + ((y / step) % 2) * (step / 2); x < area.right(); x += step)
+            painter.fillRect(QRect(x, y, 1, 1), dot);
+    }
+}
+
+QColor hoverFill(const QColor& fill) { return theme::mix(fill, QColor(Qt::white), 12); }
+QColor pressFill(const QColor& fill) { return theme::mix(fill, QColor(Qt::black), 18); }
+
+class PixelButton : public QPushButton {
+   public:
+    enum Variant { Normal, Primary, Ghost, Segment, Icon };
+
+    PixelButton(const QString& text, Variant variant, const QStringList& glyph, QWidget* parent)
+        : QPushButton(text, parent), m_variant(variant), m_glyph(glyph)
+    {
+        setCursor(Qt::PointingHandCursor);
+        setAutoDefault(false);
+        setFocusPolicy(Qt::NoFocus);
+        setAttribute(Qt::WA_Hover, true);
+        setFlat(true);
+    }
+
+    void setGlyph(const QStringList& glyph)
+    {
+        m_glyph = glyph;
+        update();
+    }
+
+    QSize sizeHint() const override
+    {
+        const QFontMetrics metrics(font());
+        const int textWidth = text().isEmpty() ? 0 : metrics.horizontalAdvance(text());
+        if (m_variant == Icon)
+            return QSize(40, 40);
+        const int iconWidth = m_glyph.isEmpty() ? 0 : 22;
+        const int height = m_variant == Segment ? 32 : m_variant == Ghost ? 36 : 40;
+        return QSize(textWidth + iconWidth + 32, height);
+    }
+
+    QSize minimumSizeHint() const override { return sizeHint(); }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.setRenderHint(QPainter::TextAntialiasing, false);
+
+        const bool enabled = isEnabled();
+        const bool hovered = underMouse() && enabled;
+        const bool pressed = isDown() && enabled;
+        const bool checked = isCheckable() && isChecked();
+
+        QColor fill = theme::Surface;
+        QColor border = theme::Line;
+        QColor highlight = theme::mix(theme::Line, Qt::white, 28);
+        QColor shadow = theme::Ink;
+        QColor label = theme::Fg;
+
+        switch (m_variant) {
+            case Primary:
+                fill = theme::Accent;
+                border = theme::AccentDeep;
+                highlight = theme::AccentHi;
+                shadow = theme::AccentDark;
+                label = theme::OnAccent;
+                break;
+            case Ghost:
+                fill = QColor(Qt::transparent);
+                border = QColor(Qt::transparent);
+                label = theme::Muted;
+                break;
+            case Segment:
+                fill = theme::SurfaceLo;
+                label = theme::Muted;
+                if (checked) {
+                    fill = theme::Accent;
+                    border = theme::AccentDeep;
+                    highlight = theme::AccentHi;
+                    shadow = theme::AccentDark;
+                    label = theme::OnAccent;
+                }
+                break;
+            default:
+                break;
+        }
+
+        if (!enabled) {
+            fill = theme::mix(fill, theme::Bg, 55);
+            border = theme::mix(border, theme::Bg, 45);
+            highlight = theme::mix(highlight, theme::Bg, 45);
+            label = theme::mix(label, theme::Bg, 55);
+        } else if (hovered) {
+            fill = hoverFill(fill);
+            label = m_variant == Primary ? theme::OnAccent : (m_variant == Ghost ? theme::AccentHi : theme::Fg);
+        }
+
+        // Reserve the bottom/right 3px so the hard drop shadow is never
+        // clipped by the widget bounds.
+        QRect body = rect().adjusted(0, 0, -3, -3);
+        const bool quiet = m_variant == Ghost && !hovered && !pressed;
+
+        // Hard drop shadow: a whole 3px block, never a blur.
+        if (!quiet && enabled)
+            painter.fillRect(body.translated(3, 3), theme::Ink);
+        if (pressed) {
+            body.translate(2, 2);
+            fill = pressFill(fill);
+        }
+
+        if (m_variant == Ghost) {
+            if (hovered || pressed) {
+                painter.fillRect(body, theme::Surface);
+                theme::bevel(painter, body, theme::Surface, theme::LineSoft, theme::mix(theme::LineSoft, Qt::white, 20),
+                             theme::Ink);
+            }
+            label = hovered ? theme::Fg : (pressed ? theme::AccentHi : theme::Muted);
+        } else {
+            painter.fillRect(body, theme::Ink);
+            const QRect inner = body.adjusted(1, 1, -1, -1);
+            theme::bevel(painter, inner, fill, border, highlight, shadow);
+            if (m_variant == Primary) {
+                // Pixel-art sheen: a single 2px light row two pixels inside.
+                painter.fillRect(QRect(inner.left() + 3, inner.top() + 3, inner.width() - 6, 2),
+                                 theme::mix(fill, Qt::white, 30));
+            }
+            if (m_variant == Segment && checked)
+                painter.fillRect(QRect(inner.left() + 4, inner.bottom() - 4, inner.width() - 8, 2), theme::AccentHi);
+        }
+
+        int x = body.left() + (m_variant == Icon ? 0 : 12);
+        if (!m_glyph.isEmpty()) {
+            const QPixmap pixmap = theme::pixelPixmap(m_glyph, label, 1);
+            const int gx = m_variant == Icon ? body.center().x() - pixmap.width() / 2 : x;
+            const int gy = body.center().y() - pixmap.height() / 2;
+            painter.drawPixmap(gx, gy, pixmap);
+            if (m_variant != Icon)
+                x += pixmap.width() + 8;
+        }
+
+        if (!text().isEmpty() && m_variant != Icon) {
+            painter.setFont(font());
+            painter.setPen(label);
+            painter.drawText(QRect(x, body.top(), body.right() - x - 6, body.height()), Qt::AlignVCenter | Qt::AlignLeft,
+                             text());
+        }
+
+        if (hasFocus()) {
+            painter.setPen(theme::AccentHi);
+            painter.drawRect(rect().adjusted(0, 0, -1, -1));
+        }
+    }
+
+   private:
+    Variant m_variant;
+    QStringList m_glyph;
+};
+
+class PixelFrame : public QFrame {
+   public:
+    enum Style { Card, Hero, Inset, Banner, Plain };
+
+    explicit PixelFrame(Style style = Card, QWidget* parent = nullptr) : QFrame(parent), m_style(style) {}
+
+    Style style() const { return m_style; }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        const QRect area = rect();
+        if (area.width() < 6 || area.height() < 6)
+            return;
+
+        painter.fillRect(area, theme::Ink);
+        const QRect inner = area.adjusted(1, 1, -1, -1);
+
+        switch (m_style) {
+            case Hero:
+                dither(painter, inner.adjusted(2, 2, -2, -2), QColor(0x18, 0x13, 0x1E), QColor(0x1C, 0x16, 0x24), 4);
+                theme::bevel(painter, inner, QColor(0x18, 0x13, 0x1E), theme::AccentDeep, theme::AccentHi,
+                             theme::AccentDark);
+                painter.fillRect(QRect(inner.left() + 2, inner.top() + 2, inner.width() - 4, 3), theme::Accent);
+                break;
+            case Banner:
+                dither(painter, inner.adjusted(2, 2, -2, -2), QColor(0x23, 0x12, 0x1B), QColor(0x2B, 0x17, 0x21), 4);
+                theme::bevel(painter, inner, QColor(0x23, 0x12, 0x1B), theme::AccentDeep, theme::Accent,
+                             theme::AccentDark);
+                break;
+            case Inset:
+                painter.fillRect(inner, theme::LineSoft);
+                painter.fillRect(inner.adjusted(2, 2, -2, -2), theme::BgDeep);
+                painter.fillRect(QRect(inner.left() + 2, inner.top() + 2, inner.width() - 4, 1), theme::Ink);
+                painter.fillRect(QRect(inner.left() + 2, inner.top() + 2, 1, inner.height() - 4), theme::Ink);
+                break;
+            case Plain:
+                break;
+            case Card:
+            default:
+                theme::bevel(painter, inner, theme::Surface, theme::Line, theme::mix(theme::Line, Qt::white, 26),
+                             theme::Ink);
+                break;
+        }
+    }
+
+   private:
+    Style m_style;
+};
+
+class PixelProgress : public QProgressBar {
+   public:
+    explicit PixelProgress(QWidget* parent = nullptr) : QProgressBar(parent)
+    {
+        setTextVisible(false);
+        setFixedHeight(16);
+        setAttribute(Qt::WA_Hover, false);
+        m_tick = new QTimer(this);
+        m_tick->setInterval(90);
+        connect(m_tick, &QTimer::timeout, this, [this] {
+            m_offset = (m_offset + 1) % 4;
+            update();
+        });
+        m_tick->start();
+    }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        const QRect area = rect();
+        painter.fillRect(area, theme::Ink);
+        theme::inset(painter, area.adjusted(1, 1, -1, -1), theme::BgDeep, theme::LineSoft);
+
+        const QRect track = area.adjusted(4, 4, -4, -4);
+        if (track.width() <= 0 || track.height() <= 0)
+            return;
+
+        const int block = 6;
+        const int gap = 2;
+        const int cells = qMax(1, (track.width() + gap) / (block + gap));
+
+        int filled = 0;
+        if (maximum() <= 0) {
+            // Busy: a marching band of four blocks instead of a spinner.
+            for (int i = 0; i < cells; ++i) {
+                if (i % 3 == m_offset % 3)
+                    painter.fillRect(QRect(track.left() + i * (block + gap), track.top(), block, track.height()),
+                                     theme::Accent);
+            }
+            return;
+        }
+
+        filled = qBound(0, int(qint64(cells) * value() / qMax(1, maximum())), cells);
+        for (int i = 0; i < cells; ++i) {
+            const QRect cell(track.left() + i * (block + gap), track.top(), block, track.height());
+            if (i < filled) {
+                painter.fillRect(cell, theme::Accent);
+                painter.fillRect(QRect(cell.left(), cell.top(), cell.width(), 1), theme::AccentHi);
+            } else {
+                painter.fillRect(cell, theme::SurfaceLo);
+            }
+        }
+    }
+
+   private:
+    QTimer* m_tick = nullptr;
+    int m_offset = 0;
+};
+
+class PixelCheck : public QCheckBox {
+   public:
+    explicit PixelCheck(const QString& text, QWidget* parent = nullptr) : QCheckBox(text, parent)
+    {
+        setCursor(Qt::PointingHandCursor);
+        setAttribute(Qt::WA_Hover, true);
+        setFont(theme::regular(12));
+        setMinimumHeight(26);
+    }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.setRenderHint(QPainter::TextAntialiasing, false);
+
+        const bool hovered = underMouse() && isEnabled();
+        const bool on = isChecked();
+        const QRect box(0, (height() - 16) / 2, 16, 16);
+
+        painter.fillRect(box, theme::Ink);
+        const QRect inner = box.adjusted(1, 1, -1, -1);
+        theme::bevel(painter, inner, on ? theme::Accent : theme::BgDeep, on ? theme::AccentDeep : theme::Line,
+                     on ? theme::AccentHi : theme::mix(theme::Line, Qt::white, 20), theme::Ink);
+
+        if (on) {
+            painter.setPen(QPen(theme::OnAccent, 2));
+            const int x = inner.left() + 3;
+            const int y = inner.top() + 7;
+            painter.drawLine(x, y, x + 2, y + 3);
+            painter.drawLine(x + 2, y + 3, x + 7, y - 3);
+        }
+
+        painter.setFont(font());
+        painter.setPen(isEnabled() ? (hovered ? theme::Fg : theme::Muted) : theme::Dim);
+        painter.drawText(QRect(24, 0, width() - 24, height()), Qt::AlignVCenter | Qt::AlignLeft, text());
+    }
+};
+
+class PixelTab : public QPushButton {
+   public:
+    PixelTab(const QString& label, const QStringList& glyph, QWidget* parent)
+        : QPushButton(label, parent), m_glyph(glyph)
+    {
+        setCheckable(true);
+        setCursor(Qt::PointingHandCursor);
+        setFocusPolicy(Qt::NoFocus);
+        setAttribute(Qt::WA_Hover, true);
+        setFont(theme::spaced(11, 0.8, true));
+        setFixedHeight(52);
+        setMinimumWidth(126);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+
+   protected:
+    void paintEvent(QPaintEvent*) override
+    {
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing, false);
+        painter.setRenderHint(QPainter::TextAntialiasing, false);
+
+        const bool active = isChecked();
+        const bool hovered = underMouse();
+        const QRect area = rect();
+
+        if (active) {
+            painter.fillRect(area, QColor(0x16, 0x1C, 0x26));
+            painter.fillRect(QRect(area.left(), area.top(), area.width(), 3), theme::Accent);
+            painter.fillRect(QRect(area.left(), area.top() + 3, area.width(), 1), theme::AccentDeep);
+        } else if (hovered) {
+            painter.fillRect(area, QColor(0x0F, 0x13, 0x19));
+            painter.fillRect(QRect(area.left(), area.top(), area.width(), 2), theme::LineSoft);
+        }
+        painter.fillRect(QRect(area.right() - 1, area.top() + 8, 1, area.height() - 16), theme::LineSoft);
+
+        const QColor iconColor = active ? theme::Accent : hovered ? theme::Fg : theme::Dim;
+        const QPixmap pixmap = theme::pixelPixmap(m_glyph, iconColor, 1);
+        const int contentWidth = pixmap.width() + 8 + QFontMetrics(font()).horizontalAdvance(text());
+        int x = area.left() + (area.width() - contentWidth) / 2;
+        painter.drawPixmap(x, area.center().y() - pixmap.height() / 2, pixmap);
+        x += pixmap.width() + 8;
+
+        painter.setFont(font());
+        painter.setPen(active ? theme::Fg : hovered ? theme::Fg : theme::Dim);
+        painter.drawText(QRect(x, area.top(), area.right() - x - 6, area.height()), Qt::AlignVCenter | Qt::AlignLeft,
+                         text());
+    }
+
+   private:
+    QStringList m_glyph;
+};
+
+// ------------------------------------------------------------------- helpers
 void setGlyph(QPushButton* b, const QStringList& glyph, const QColor& color)
 {
     b->setIcon(theme::pixelIcon(glyph, color));
-    b->setIconSize(QSize(16, 16));
+    b->setIconSize(QSize(18, 18));
 }
 
 struct Tone {
@@ -497,41 +962,38 @@ struct Tone {
     QColor border;
 };
 
-const Tone ToneOk{ QColor(0x4B, 0xE3, 0x9F), QColor(0x10, 0x24, 0x1C), QColor(0x23, 0x53, 0x42) };
-const Tone ToneWarn{ QColor(0xF5, 0xB9, 0x42), QColor(0x2A, 0x22, 0x10), QColor(0x5A, 0x4A, 0x1E) };
-const Tone ToneAccent{ QColor(0xFF, 0x86, 0xA5), QColor(0x2A, 0x13, 0x1C), QColor(0x6E, 0x1B, 0x31) };
-const Tone ToneErr{ QColor(0xFF, 0x6E, 0x7B), QColor(0x2A, 0x12, 0x16), QColor(0x5E, 0x25, 0x30) };
-const Tone ToneMuted{ QColor(0xA9, 0xB2, 0xC3), QColor(0x14, 0x18, 0x21), QColor(0x2C, 0x33, 0x40) };
+const Tone ToneOk{ theme::Ok, QColor(0x0F, 0x24, 0x1B), theme::OkDeep };
+const Tone ToneWarn{ theme::Warn, QColor(0x27, 0x1F, 0x0E), theme::WarnDeep };
+const Tone ToneAccent{ theme::AccentHi, QColor(0x28, 0x12, 0x1A), theme::AccentDeep };
+const Tone ToneErr{ theme::Err, QColor(0x27, 0x12, 0x14), theme::ErrDeep };
+const Tone ToneMuted{ theme::Muted, QColor(0x12, 0x16, 0x1D), theme::LineSoft };
 
 void setChip(QLabel* label, const QString& text, const Tone& tone)
 {
     label->setText(text);
-    label->setStyleSheet(QStringLiteral("color:%1; background:%2; border:2px solid %3; padding:3px 8px;")
+    label->setFont(theme::spaced(9, 1.1, true));
+    label->setStyleSheet(QStringLiteral("color:%1; background:%2; border:2px solid %3; padding:2px 7px;")
                              .arg(tone.fg.name(), tone.bg.name(), tone.border.name()));
 }
 
 void setStatusLabel(QLabel* label, const QString& text, const QColor& color)
 {
     label->setText(text);
-    label->setStyleSheet(QStringLiteral("color:%1; background:#0E1219; border:2px solid #20252F; "
-                                        "border-left:4px solid %1; padding:8px 10px;")
+    label->setStyleSheet(QStringLiteral("color:%1; background:#07090D; border:2px solid #222A37; "
+                                        "border-left:4px solid %1; padding:7px 9px;")
                              .arg(color.name()));
 }
 
-QFrame* card(QWidget* parent)
+PixelFrame* card(QWidget* parent, PixelFrame::Style style = PixelFrame::Card)
 {
-    auto* frame = new QFrame(parent);
-    frame->setObjectName(QStringLiteral("berryCard"));
-    return frame;
+    return new PixelFrame(style, parent);
 }
 
 QLabel* caption(const QString& text, QWidget* parent)
 {
     auto* label = new QLabel(text, parent);
     label->setObjectName(QStringLiteral("berryCaption"));
-    QFont font = theme::regular(10);
-    font.setLetterSpacing(QFont::AbsoluteSpacing, 1.2);
-    label->setFont(font);
+    label->setFont(theme::spaced(10, 1.2));
     return label;
 }
 
@@ -539,13 +1001,14 @@ QLabel* sectionLabel(const QString& text, QWidget* parent)
 {
     auto* label = new QLabel(text, parent);
     label->setObjectName(QStringLiteral("berryH2"));
+    label->setFont(theme::spaced(12, 0.6, true));
     return label;
 }
 
 QFrame* rule(QWidget* parent)
 {
     auto* line = new QFrame(parent);
-    line->setObjectName(QStringLiteral("berryRule"));
+    line->setStyleSheet(QStringLiteral("background:#222A37; border:none;"));
     line->setFixedHeight(2);
     return line;
 }
@@ -557,35 +1020,19 @@ QWidget* accentRule(QWidget* parent)
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(0);
     auto* accent = new QFrame(wrap);
-    accent->setObjectName(QStringLiteral("berryRuleAccent"));
+    accent->setStyleSheet(QStringLiteral("background:#FF4F79; border:none;"));
     accent->setFixedSize(56, 2);
-    auto* rest = rule(wrap);
     row->addWidget(accent);
-    row->addWidget(rest, 1);
+    row->addWidget(rule(wrap), 1);
     return wrap;
 }
 
-QPushButton* button(const QString& text, QWidget* parent, const QString& objectName = QString(),
+PixelButton* button(const QString& text, QWidget* parent, PixelButton::Variant variant = PixelButton::Normal,
                     const QStringList& glyph = {})
 {
-    auto* b = new QPushButton(text, parent);
-    b->setAutoDefault(false);
-    b->setCursor(Qt::PointingHandCursor);
-    if (!objectName.isEmpty())
-        b->setObjectName(objectName);
-    if (!glyph.isEmpty()) {
-        const bool onAccent = objectName == QLatin1String("berryPrimary") || objectName == QLatin1String("berryPlay");
-        const bool quiet = objectName == QLatin1String("berryGhost") || objectName == QLatin1String("berrySegment");
-        setGlyph(b, glyph, onAccent ? IconDark : quiet ? IconMuted : IconFg);
-    }
+    auto* b = new PixelButton(text, variant, glyph, parent);
+    b->setFont(theme::regular(variant == PixelButton::Segment ? 11 : 13));
     return b;
-}
-
-QIcon listDot(bool active)
-{
-    if (!active)
-        return QIcon(QPixmap(8, 8));
-    return QIcon(theme::pixelPixmap(gDot(), theme::Accent));
 }
 
 QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& title, const QString& subtitle)
@@ -598,7 +1045,7 @@ QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& titl
     auto* top = new QHBoxLayout;
     top->setSpacing(8);
     auto* mark = new QFrame(wrap);
-    mark->setObjectName(QStringLiteral("berryMark"));
+    mark->setStyleSheet(QStringLiteral("background:#FF4F79; border:none;"));
     mark->setFixedSize(10, 10);
     top->addWidget(mark, 0, Qt::AlignVCenter);
     top->addWidget(caption(eyebrow, wrap));
@@ -607,9 +1054,7 @@ QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& titl
 
     auto* heading = new QLabel(title, wrap);
     heading->setObjectName(QStringLiteral("berryTitle"));
-    QFont font = theme::semiBold(28);
-    font.setLetterSpacing(QFont::AbsoluteSpacing, 0.5);
-    heading->setFont(font);
+    heading->setFont(theme::spaced(26, 0.6, true));
     box->addWidget(heading);
 
     if (!subtitle.isEmpty()) {
@@ -619,7 +1064,7 @@ QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& titl
         box->addWidget(sub);
     }
 
-    box->addSpacing(10);
+    box->addSpacing(8);
     box->addWidget(accentRule(wrap));
     return wrap;
 }
@@ -642,66 +1087,6 @@ QString humanGb(qint64 bytes)
 
 }  // namespace
 
-
-
-class NavButton : public QPushButton {
-   public:
-    NavButton(const QString& label, const QStringList& glyph, QWidget* parent)
-        : QPushButton(label, parent), m_glyph(glyph)
-    {
-        setCheckable(true);
-        setCursor(Qt::PointingHandCursor);
-        setFocusPolicy(Qt::NoFocus);
-        setAttribute(Qt::WA_Hover, true);
-        setToolTip(label);
-        QFont navFont = theme::semiBold(11);
-        navFont.setLetterSpacing(QFont::AbsoluteSpacing, 0.7);
-        setFont(navFont);
-        setFixedHeight(42);
-        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-    }
-
-   protected:
-    void paintEvent(QPaintEvent*) override
-    {
-        QPainter painter(this);
-        painter.setRenderHint(QPainter::Antialiasing, false);
-
-        const bool active = isChecked();
-        const bool hover = underMouse();
-        const QRect area = rect();
-
-        if (active)
-            painter.fillRect(area, QColor(0x1A, 0x12, 0x19));
-        else if (hover)
-            painter.fillRect(area, QColor(0x12, 0x16, 0x1E));
-
-        if (active)
-            painter.fillRect(QRect(area.left(), area.top() + 5, 4, area.height() - 10), QColor(0xFF, 0x5D, 0x86));
-
-        const QColor iconColor = active ? QColor(0xFF, 0x5D, 0x86)
-                                        : hover ? QColor(0xE9, 0xED, 0xF5) : QColor(0x7C, 0x87, 0x98);
-        const qreal iconX = 16.0;
-        const qreal iconY = (height() - m_glyph.size()) / 2.0;
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(iconColor);
-        for (int row = 0; row < m_glyph.size(); ++row) {
-            const QString& line = m_glyph.at(row);
-            for (int column = 0; column < line.size(); ++column) {
-                if (line.at(column) == QLatin1Char('#'))
-                    painter.fillRect(QRectF(iconX + column, iconY + row, 1, 1), iconColor);
-            }
-        }
-
-        painter.setFont(font());
-        painter.setPen(active ? QColor(0xF7, 0xF9, 0xFC) : hover ? QColor(0xE9, 0xED, 0xF5) : QColor(0xA6, 0xB0, 0xC2));
-        painter.drawText(QRect(44, 0, width() - 54, height()), Qt::AlignVCenter | Qt::AlignLeft, text());
-    }
-
-   private:
-    QStringList m_glyph;
-};
-
 QStringList navGlyph(int index)
 {
     switch (index) {
@@ -714,7 +1099,7 @@ QStringList navGlyph(int index)
         case 3:
             return gSettings();
         case 4:
-            return gDiagnostics();
+            return gMonitor();
         default:
             return gInfo();
     }
@@ -734,85 +1119,69 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     m_ping = new ServerPing(this);
     m_updater = new Updater(this);
 
-    auto* root = new QHBoxLayout(this);
+    auto* root = new QVBoxLayout(this);
     root->setContentsMargins(0, 0, 0, 0);
     root->setSpacing(0);
 
-    // ---------------------------------------------------------------- sidebar
-    auto* side = new QWidget(this);
-    side->setObjectName(QStringLiteral("berrySide"));
-    side->setFixedWidth(240);
-    side->setStyleSheet(
-        QStringLiteral("#berrySide { background: #0B0D12; background-image: url(:/berry/pattern.png); "
-                       "border-right: 2px solid #1C222D; }"));
-    auto* sideLayout = new QVBoxLayout(side);
-    sideLayout->setContentsMargins(14, 20, 14, 16);
-    sideLayout->setSpacing(6);
+    // ------------------------------------------------------------------ top bar
+    auto* top = new QFrame(this);
+    top->setObjectName(QStringLiteral("berryTopbar"));
+    top->setFixedHeight(78);
+    auto* topRow = new QHBoxLayout(top);
+    topRow->setContentsMargins(18, 12, 18, 12);
+    topRow->setSpacing(14);
 
-    auto* brand = new QWidget(side);
-    auto* brandRow = new QHBoxLayout(brand);
-    brandRow->setContentsMargins(4, 0, 4, 0);
-    brandRow->setSpacing(11);
-    auto* logo = new QLabel(brand);
-    logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(46, 46, Qt::KeepAspectRatio, Qt::FastTransformation));
-    brandRow->addWidget(logo);
+    auto* logo = new QLabel(top);
+    logo->setPixmap(theme::pixelArt(gLogoSprite(), theme::Accent, 3));
+    logo->setFixedSize(48, 48);
+    topRow->addWidget(logo, 0, Qt::AlignVCenter);
 
-    auto* brandText = new QVBoxLayout;
-    brandText->setSpacing(1);
-    auto* wordmark = new QLabel(QStringLiteral("BERRYTRIP"), brand);
-    wordmark->setObjectName(QStringLiteral("berryH1"));
-    QFont wordFont = theme::semiBold(16);
-    wordFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.6);
-    wordmark->setFont(wordFont);
-    brandText->addWidget(wordmark);
-    brandText->addWidget(caption(QStringLiteral("1.21.1 · NEOFORGE"), brand));
-    brandRow->addLayout(brandText, 1);
-    sideLayout->addWidget(brand);
+    auto* brand = new QVBoxLayout;
+    brand->setSpacing(2);
+    auto* wordmark = new QLabel(QStringLiteral("BERRYTRIP"), top);
+    wordmark->setFont(theme::spaced(22, 2.0, true));
+    wordmark->setStyleSheet(QStringLiteral("color:#F7FAFF;"));
+    auto* tagline = caption(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), top);
+    brand->addWidget(wordmark);
+    brand->addWidget(tagline);
+    topRow->addLayout(brand);
+    topRow->addStretch(1);
 
-    sideLayout->addSpacing(10);
-    sideLayout->addWidget(rule(side));
-    sideLayout->addSpacing(10);
+    auto* versionChip = new QLabel(top);
+    setChip(versionChip, QStringLiteral("V%1").arg(Config::version()), ToneMuted);
+    topRow->addWidget(versionChip, 0, Qt::AlignVCenter);
+
+    auto* licenseChip = new QLabel(top);
+    setChip(licenseChip, QStringLiteral("GPL-3.0"), ToneAccent);
+    topRow->addWidget(licenseChip, 0, Qt::AlignVCenter);
+    root->addWidget(top);
+
+    // -------------------------------------------------------------------- tabs
+    auto* tabs = new QWidget(this);
+    tabs->setObjectName(QStringLiteral("berryTabStrip"));
+    tabs->setAttribute(Qt::WA_StyledBackground, true);
+    auto* tabRow = new QHBoxLayout(tabs);
+    tabRow->setContentsMargins(12, 0, 12, 0);
+    tabRow->setSpacing(0);
 
     m_pages = new QStackedWidget(this);
     m_pages->setObjectName(QStringLiteral("berryPages"));
-    m_pages->setAutoFillBackground(true);
+    m_pages->setAutoFillBackground(false);
 
-    auto* navHead = new QHBoxLayout;
-    navHead->setContentsMargins(5, 0, 4, 0);
-    navHead->setSpacing(8);
-    navHead->addWidget(caption(tr("РАЗДЕЛЫ"), side));
-    navHead->addWidget(rule(side), 1);
-    sideLayout->addLayout(navHead);
-    sideLayout->addSpacing(2);
-
-    const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("СКИНЫ"), tr("НАСТРОЙКИ"),
-                              tr("ДИАГНОСТИКА"), tr("О ПРОГРАММЕ") };
+    const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("СКИНЫ"),
+                              tr("НАСТРОЙКИ"), tr("ДИАГНОСТИКА"), tr("О ПРОГРАММЕ") };
     m_nav = new QButtonGroup(this);
     m_nav->setExclusive(true);
     for (int i = 0; i < titles.size(); ++i) {
-        auto* navButton = new NavButton(titles.at(i), navGlyph(i), side);
-        navButton->setChecked(i == 0);
-        m_nav->addButton(navButton, i);
-        sideLayout->addWidget(navButton);
+        auto* tab = new PixelTab(titles.at(i), navGlyph(i), tabs);
+        tab->setChecked(i == 0);
+        m_nav->addButton(tab, i);
+        tabRow->addWidget(tab);
     }
+    tabRow->addStretch(1);
+    root->addWidget(tabs);
 
-    sideLayout->addStretch(1);
-    sideLayout->addWidget(rule(side));
-    sideLayout->addSpacing(8);
-
-    auto* foot = new QWidget(side);
-    auto* footLayout = new QVBoxLayout(foot);
-    footLayout->setContentsMargins(5, 0, 4, 0);
-    footLayout->setSpacing(4);
-    footLayout->addWidget(caption(QStringLiteral("v%1 · GPL-3.0").arg(Config::version()), foot));
-    auto* siteButton = button(tr("Сайт сборки"), foot, QStringLiteral("berryGhost"), gGlobe());
-    siteButton->setStyleSheet(QStringLiteral("text-align: left; padding: 7px 5px;"));
-    connect(siteButton, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(SiteUrl)); });
-    footLayout->addWidget(siteButton);
-    sideLayout->addWidget(foot);
-
-    // ---------------------------------------------------------------- pages
+    // ------------------------------------------------------------------- pages
     m_pages->addWidget(buildHome());
     m_pages->addWidget(buildAccount());
     m_pages->addWidget(buildSkins());
@@ -823,8 +1192,27 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
     connect(m_nav, &QButtonGroup::idClicked, this, &Panel::goToPage);
 
-    root->addWidget(side);
     root->addWidget(m_pages, 1);
+
+    // ------------------------------------------------------------------ footer
+    auto* footer = new QFrame(this);
+    footer->setObjectName(QStringLiteral("berryFooter"));
+    footer->setFixedHeight(30);
+    auto* footerRow = new QHBoxLayout(footer);
+    footerRow->setContentsMargins(14, 0, 14, 0);
+    footerRow->setSpacing(0);
+    auto* footLeft = new QLabel(tr("СЕРВЕР %1").arg(Config::serverAddress()), footer);
+    footLeft->setObjectName(QStringLiteral("berryFooterCell"));
+    auto* footMid = new QLabel(QStringLiteral("TELEGRAM · @KILLBERRIESBOT"), footer);
+    footMid->setObjectName(QStringLiteral("berryFooterCell"));
+    auto* footRight = new QLabel(QStringLiteral("BERRYTRIP %1 · PIXEL UI").arg(Config::version()), footer);
+    footRight->setObjectName(QStringLiteral("berryFooterCell"));
+    footerRow->addWidget(footLeft);
+    footerRow->addStretch(1);
+    footerRow->addWidget(footMid);
+    footerRow->addStretch(1);
+    footerRow->addWidget(footRight);
+    root->addWidget(footer);
 
     // ---------------------------------------------------------------- state
     QString error;
@@ -917,6 +1305,11 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     refreshDiagnostics();
     startSync();
     startPing();
+
+    m_pingTimer = new QTimer(this);
+    m_pingTimer->setInterval(3000);
+    connect(m_pingTimer, &QTimer::timeout, this, &Panel::startPing);
+    m_pingTimer->start();
 
     connect(m_updater, &Updater::checking, this, [this] {
         if (m_aboutStatus)
@@ -1031,14 +1424,13 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     });
 
     QTimer::singleShot(6000, this, [this] { checkUpdates(); });
-
 }
 
 QWidget* Panel::page(QWidget* content)
 {
-    content->setMaximumWidth(1120);
     content->setObjectName(QStringLiteral("berryPage"));
     content->setAttribute(Qt::WA_StyledBackground, true);
+    content->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
 
     auto* center = new QWidget;
     center->setObjectName(QStringLiteral("berryPage"));
@@ -1046,9 +1438,7 @@ QWidget* Panel::page(QWidget* content)
     auto* centerBox = new QHBoxLayout(center);
     centerBox->setContentsMargins(0, 0, 0, 0);
     centerBox->setSpacing(0);
-    centerBox->addStretch(1);
-    centerBox->addWidget(content, 0);
-    centerBox->addStretch(1);
+    centerBox->addWidget(content, 1);
 
     auto* scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
@@ -1058,93 +1448,175 @@ QWidget* Panel::page(QWidget* content)
     return scroll;
 }
 
+void Panel::paintEvent(QPaintEvent*)
+{
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    dither(painter, rect(), theme::Bg, theme::BgDot, 4);
+
+    // A faint 16px grid keeps every block on the same pixel rhythm.
+    painter.setPen(theme::mix(theme::Bg, QColor(Qt::white), 4));
+    for (int x = 0; x < width(); x += 16)
+        painter.drawLine(x, 0, x, height());
+    for (int y = 0; y < height(); y += 16)
+        painter.drawLine(0, y, width(), y);
+}
+
 QWidget* Panel::buildHome()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(28, 24, 28, 24);
-    layout->setSpacing(18);
+    layout->setContentsMargins(26, 18, 26, 18);
+    layout->setSpacing(14);
 
-    layout->addWidget(pageHeader(content, tr("BERRYTRIP"), tr("Главное"),
-                                 tr("Сборка обновляется сама, вход — через Telegram-бота.")));
-
-    auto* body = new QHBoxLayout;
-    body->setSpacing(18);
-
-    auto* left = new QVBoxLayout;
-    left->setSpacing(14);
-
-    // ------------------------------------------------------------------ hero
-    auto* hero = new QFrame;
-    hero->setObjectName(QStringLiteral("berryHero"));
-    auto* heroRow = new QHBoxLayout(hero);
-    heroRow->setContentsMargins(22, 18, 22, 18);
-    heroRow->setSpacing(16);
-
-    auto* logo = new QLabel(hero);
-    logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(64, 64, Qt::KeepAspectRatio, Qt::FastTransformation));
-    heroRow->addWidget(logo);
-
-    auto* text = new QVBoxLayout;
-    text->setSpacing(3);
-    auto* title = new QLabel(QStringLiteral("BerryTrip"), hero);
-    title->setObjectName(QStringLiteral("berryDisplay"));
-    QFont titleFont = theme::semiBold(32);
-    titleFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.0);
-    title->setFont(titleFont);
-    auto* subtitle = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), hero);
-    subtitle->setObjectName(QStringLiteral("berryCaption"));
-    m_chip = new QLabel(hero);
-    QFont chipFont = theme::semiBold(9);
-    chipFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.3);
-    m_chip->setFont(chipFont);
-    setChip(m_chip, tr("ПРОВЕРКА СБОРКИ"), ToneMuted);
-    text->addWidget(title);
-    text->addWidget(subtitle);
-    text->addSpacing(4);
-    text->addWidget(m_chip, 0, Qt::AlignLeft);
-    heroRow->addLayout(text, 1);
-
-    m_play = button(tr("Играть"), hero, QStringLiteral("berryPlay"), gPlay());
-    m_play->setFixedSize(188, 60);
-    connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
-    heroRow->addWidget(m_play, 0, Qt::AlignVCenter);
-    left->addWidget(hero);
-
-    // ------------------------------------------------------ launcher update
-    m_updateBanner = new QFrame(content);
-    m_updateBanner->setObjectName(QStringLiteral("berryUpdate"));
-    auto* updateBannerLayout = new QVBoxLayout(m_updateBanner);
-    updateBannerLayout->setContentsMargins(18, 14, 18, 14);
-    updateBannerLayout->setSpacing(8);
-    auto* updateHead = new QHBoxLayout;
-    updateHead->setSpacing(10);
-    updateHead->addWidget(caption(tr("ОБНОВЛЕНИЕ ЛАУНЧЕРА"), m_updateBanner));
-    updateHead->addStretch(1);
-    m_updateButton = button(tr("Скачать"), m_updateBanner, QStringLiteral("berryPrimary"), gDownload());
+    // ------------------------------------------------------- launcher update
+    m_updateBanner = new PixelFrame(PixelFrame::Banner, content);
+    auto* bannerLayout = new QVBoxLayout(m_updateBanner);
+    bannerLayout->setContentsMargins(16, 12, 16, 14);
+    bannerLayout->setSpacing(8);
+    auto* bannerHead = new QHBoxLayout;
+    bannerHead->setSpacing(10);
+    bannerHead->addWidget(caption(tr("ОБНОВЛЕНИЕ ЛАУНЧЕРА"), m_updateBanner));
+    bannerHead->addStretch(1);
+    m_updateButton = button(tr("Скачать"), m_updateBanner, PixelButton::Primary, gDownload());
     connect(m_updateButton, &QPushButton::clicked, this, &Panel::installUpdate);
-    updateHead->addWidget(m_updateButton);
-    updateBannerLayout->addLayout(updateHead);
+    bannerHead->addWidget(m_updateButton);
+    bannerLayout->addLayout(bannerHead);
     m_updateText = new QLabel(tr("Доступна новая версия."), m_updateBanner);
     m_updateText->setObjectName(QStringLiteral("berryMuted"));
     m_updateText->setWordWrap(true);
-    updateBannerLayout->addWidget(m_updateText);
-    m_updateProgress = new QProgressBar(m_updateBanner);
-    m_updateProgress->setTextVisible(false);
+    bannerLayout->addWidget(m_updateText);
+    m_updateProgress = new PixelProgress(m_updateBanner);
     m_updateProgress->hide();
-    updateBannerLayout->addWidget(m_updateProgress);
+    bannerLayout->addWidget(m_updateProgress);
     m_updateBanner->hide();
-    left->addWidget(m_updateBanner);
+    layout->addWidget(m_updateBanner);
 
-    // --------------------------------------------------------- server/account
+    // ------------------------------------------------------------------- hero
+    auto* hero = new PixelFrame(PixelFrame::Hero, content);
+    auto* heroRow = new QHBoxLayout(hero);
+    heroRow->setContentsMargins(18, 14, 18, 16);
+    heroRow->setSpacing(16);
+
+    auto* left = new QVBoxLayout;
+    left->setSpacing(6);
+
+    auto* titleRow = new QHBoxLayout;
+    titleRow->setSpacing(14);
+    auto* heroLogo = new QLabel(hero);
+    heroLogo->setPixmap(theme::pixelArt(gLogoSprite(), theme::Accent, 4));
+    heroLogo->setFixedSize(64, 64);
+    titleRow->addWidget(heroLogo, 0, Qt::AlignTop);
+
+    auto* titleBox = new QVBoxLayout;
+    titleBox->setSpacing(2);
+    auto* title = new QLabel(QStringLiteral("BERRYTRIP"), hero);
+    title->setObjectName(QStringLiteral("berryDisplay"));
+    title->setFont(theme::spaced(34, 2.2, true));
+    titleBox->addWidget(title);
+    auto* subtitle = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), hero);
+    subtitle->setObjectName(QStringLiteral("berryCaption"));
+    titleBox->addWidget(subtitle);
+    titleRow->addLayout(titleBox, 1);
+
+    m_chip = new QLabel(hero);
+    setChip(m_chip, tr("ПРОВЕРКА СБОРКИ"), ToneMuted);
+    titleBox->addSpacing(6);
+    titleBox->addWidget(m_chip, 0, Qt::AlignLeft);
+    left->addLayout(titleRow);
+
+    left->addSpacing(8);
+    m_play = button(tr("Играть"), hero, PixelButton::Primary, gPlay());
+    m_play->setFont(theme::spaced(17, 1.3, true));
+    m_play->setMinimumSize(198, 52);
+    m_play->setMaximumHeight(52);
+    connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
+    auto* playRow = new QHBoxLayout;
+    playRow->setSpacing(10);
+    playRow->addWidget(m_play);
+    auto* playHint = new QLabel(tr("Запуск на сервер\nбез входа в Microsoft"), hero);
+    playHint->setObjectName(QStringLiteral("berryDim"));
+    playRow->addWidget(playHint);
+    playRow->addStretch(1);
+    left->addLayout(playRow);
+
+    auto* marks = new QHBoxLayout;
+    marks->setSpacing(6);
+    auto* modChip = new QLabel(hero);
+    setChip(modChip, tr("МОДОВ %1").arg(Tweaks::modCount()), ToneMuted);
+    auto* mcChip = new QLabel(hero);
+    setChip(mcChip, QStringLiteral("1.21.1"), ToneMuted);
+    auto* loaderChip = new QLabel(hero);
+    setChip(loaderChip, QStringLiteral("NEOFORGE 21.1.267"), ToneMuted);
+    marks->addWidget(modChip);
+    marks->addWidget(mcChip);
+    marks->addWidget(loaderChip);
+    marks->addStretch(1);
+    left->addSpacing(4);
+    left->addLayout(marks);
+
+    auto* features = new QVBoxLayout;
+    features->setSpacing(4);
+    const auto feature = [&](const QStringList& glyph, const QString& text) {
+        auto* row = new QHBoxLayout;
+        row->setSpacing(8);
+        auto* icon = new QLabel(hero);
+        icon->setPixmap(theme::pixelPixmap(glyph, theme::AccentHi));
+        icon->setFixedSize(18, 18);
+        auto* label = new QLabel(text, hero);
+        label->setObjectName(QStringLiteral("berryDim"));
+        row->addWidget(icon, 0, Qt::AlignVCenter);
+        row->addWidget(label);
+        row->addStretch(1);
+        features->addLayout(row);
+    };
+    feature(gRefresh(), tr("Сборка скачивается и обновляется сама"));
+    feature(gShield(), tr("Вход без Microsoft и без лицензии"));
+    feature(gServer(), tr("Сервер %1").arg(Config::serverAddress()));
+    left->addSpacing(8);
+    left->addLayout(features);
+    left->addStretch(1);
+    heroRow->addLayout(left, 1);
+
+    auto* showcase = new PixelFrame(PixelFrame::Inset, hero);
+    showcase->setFixedWidth(262);
+    auto* showcaseLayout = new QVBoxLayout(showcase);
+    showcaseLayout->setContentsMargins(10, 8, 10, 10);
+    showcaseLayout->setSpacing(6);
+    auto* showcaseHead = new QHBoxLayout;
+    showcaseHead->setSpacing(8);
+    showcaseHead->addWidget(caption(tr("ТВОЙ СКИН"), showcase));
+    showcaseHead->addStretch(1);
+    auto* viewTag = new QLabel(QStringLiteral("3D"), showcase);
+    viewTag->setObjectName(QStringLiteral("berryDim"));
+    showcaseHead->addWidget(viewTag);
+    showcaseLayout->addLayout(showcaseHead);
+
+    m_skinPreview = new Skin3D(showcase);
+    m_skinPreview->setMinimumSize(230, 172);
+    m_skinPreview->setMaximumHeight(196);
+    m_skinPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    showcaseLayout->addWidget(m_skinPreview, 1);
+
+    m_skinName = new QLabel(tr("Скин не выбран"), showcase);
+    m_skinName->setObjectName(QStringLiteral("berryDim"));
+    m_skinName->setWordWrap(true);
+    showcaseLayout->addWidget(m_skinName);
+
+    auto* openSkins = button(tr("Открыть скины"), showcase, PixelButton::Ghost, gSkin());
+    connect(openSkins, &QPushButton::clicked, this, [this] { goToPage(2); });
+    showcaseLayout->addWidget(openSkins);
+    heroRow->addWidget(showcase, 0);
+    layout->addWidget(hero);
+
+    // ---------------------------------------------------------------- 3 cards
     auto* row = new QHBoxLayout;
     row->setSpacing(14);
 
     auto* server = card(content);
     auto* serverLayout = new QVBoxLayout(server);
-    serverLayout->setContentsMargins(20, 16, 20, 16);
-    serverLayout->setSpacing(5);
+    serverLayout->setContentsMargins(16, 12, 16, 14);
+    serverLayout->setSpacing(6);
     serverLayout->addWidget(caption(tr("СЕРВЕР"), server));
     auto* address = new QLabel(Config::serverAddress(), server);
     address->setObjectName(QStringLiteral("berryMono"));
@@ -1153,7 +1625,6 @@ QWidget* Panel::buildHome()
     m_motd->setObjectName(QStringLiteral("berryH1"));
     m_motd->setWordWrap(true);
     serverLayout->addWidget(m_motd);
-
     auto* serverState = new QHBoxLayout;
     serverState->setSpacing(12);
     m_players = new QLabel(tr("Игроки: —"), server);
@@ -1165,24 +1636,20 @@ QWidget* Panel::buildHome()
     serverState->addStretch(1);
     serverLayout->addLayout(serverState);
     serverLayout->addStretch(1);
-
     auto* serverButtons = new QHBoxLayout;
     serverButtons->setSpacing(8);
-    auto* refresh = button(tr("Пинг"), server, QString(), gRefresh());
-    connect(refresh, &QPushButton::clicked, this, &Panel::startPing);
-    auto* telegram = button(tr("Telegram"), server, QString(), gTelegram());
-    setGlyph(telegram, gTelegram(), theme::Telegram);
+    // No Ping button: the status refreshes automatically every 3 seconds.
+    auto* telegram = button(tr("Telegram"), server, PixelButton::Normal, gTelegram());
     connect(telegram, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(TelegramUrl)); });
-    serverButtons->addWidget(refresh);
     serverButtons->addWidget(telegram);
     serverButtons->addStretch(1);
     serverLayout->addLayout(serverButtons);
-    row->addWidget(server, 2);
+    row->addWidget(server, 1);
 
     auto* account = card(content);
     auto* accountLayout = new QVBoxLayout(account);
-    accountLayout->setContentsMargins(20, 16, 20, 16);
-    accountLayout->setSpacing(5);
+    accountLayout->setContentsMargins(16, 12, 16, 14);
+    accountLayout->setSpacing(6);
     accountLayout->addWidget(caption(tr("АККАУНТ"), account));
     m_homeAccount = new QLabel(tr("Вход не выполнен"), account);
     m_homeAccount->setObjectName(QStringLiteral("berryH1"));
@@ -1192,81 +1659,41 @@ QWidget* Panel::buildHome()
     accountNote->setObjectName(QStringLiteral("berryCaption"));
     accountLayout->addWidget(accountNote);
     accountLayout->addStretch(1);
-    auto* openAccount = button(tr("Аккаунт"), account, QString(), gAccount());
+    auto* openAccount = button(tr("Аккаунт"), account, PixelButton::Normal, gAccount());
     connect(openAccount, &QPushButton::clicked, this, [this] { goToPage(1); });
     accountLayout->addWidget(openAccount, 0, Qt::AlignLeft);
     row->addWidget(account, 1);
-    left->addLayout(row);
 
-    // ------------------------------------------------------------------ sync
-    auto* update = card(content);
-    auto* updateLayout = new QVBoxLayout(update);
-    updateLayout->setContentsMargins(20, 16, 20, 16);
-    updateLayout->setSpacing(8);
-    updateLayout->addWidget(caption(tr("СБОРКА"), update));
-    m_progress = new QProgressBar(update);
-    m_progress->setTextVisible(false);
-    m_status = new QLabel(tr("Подготовка…"), update);
+    auto* build = card(content);
+    auto* buildLayout = new QVBoxLayout(build);
+    buildLayout->setContentsMargins(16, 12, 16, 14);
+    buildLayout->setSpacing(8);
+    buildLayout->addWidget(caption(tr("СБОРКА"), build));
+    m_progress = new PixelProgress(build);
+    buildLayout->addWidget(m_progress);
+    m_status = new QLabel(tr("Подготовка…"), build);
     m_status->setObjectName(QStringLiteral("berryDim"));
     m_status->setWordWrap(true);
-    updateLayout->addWidget(m_progress);
-    updateLayout->addWidget(m_status);
-
-    auto* actions = new QHBoxLayout;
-    actions->setSpacing(8);
-    m_retry = button(tr("Повторить"), update, QString(), gRefresh());
+    buildLayout->addWidget(m_status);
+    buildLayout->addStretch(1);
+    auto* buildActions = new QHBoxLayout;
+    buildActions->setSpacing(8);
+    m_retry = button(tr("Повторить"), build, PixelButton::Normal, gRefresh());
     m_retry->hide();
     connect(m_retry, &QPushButton::clicked, this, &Panel::startSync);
-    actions->addWidget(m_retry);
-    actions->addStretch(1);
-    auto* site = button(tr("Сайт"), update, QStringLiteral("berryGhost"), gGlobe());
+    auto* site = button(tr("Сайт"), build, PixelButton::Ghost, gGlobe());
     connect(site, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(SiteUrl)); });
-    auto* releases = button(tr("Релизы"), update, QStringLiteral("berryGhost"), gDownload());
+    auto* releases = button(tr("Релизы"), build, PixelButton::Ghost, gDownload());
     connect(releases, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(ReleasesUrl)); });
-    actions->addWidget(site);
-    actions->addWidget(releases);
-    updateLayout->addLayout(actions);
-    left->addWidget(update);
-    left->addStretch(1);
+    buildActions->addWidget(m_retry);
+    buildActions->addStretch(1);
+    buildActions->addWidget(site);
+    buildActions->addWidget(releases);
+    buildLayout->addLayout(buildActions);
+    row->addWidget(build, 1);
 
-    body->addLayout(left, 1);
-
-    // --------------------------------------------------------------- showcase
-    auto* showcase = new QFrame(content);
-    showcase->setObjectName(QStringLiteral("berryShowcase"));
-    showcase->setFixedWidth(318);
-    auto* showcaseLayout = new QVBoxLayout(showcase);
-    showcaseLayout->setContentsMargins(16, 14, 16, 16);
-    showcaseLayout->setSpacing(8);
-
-    auto* showcaseHead = new QHBoxLayout;
-    showcaseHead->setSpacing(8);
-    showcaseHead->addWidget(caption(tr("ТВОЙ СКИН"), showcase));
-    showcaseHead->addStretch(1);
-    auto* viewTag = new QLabel(QStringLiteral("3D"), showcase);
-    viewTag->setObjectName(QStringLiteral("berryDim"));
-    showcaseHead->addWidget(viewTag);
-    showcaseLayout->addLayout(showcaseHead);
-
-    m_skinPreview = new Skin3D(showcase);
-    m_skinPreview->setMinimumSize(250, 360);
-    m_skinPreview->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
-    showcaseLayout->addWidget(m_skinPreview, 1);
-
-    m_skinName = new QLabel(tr("Скин не выбран"), showcase);
-    m_skinName->setObjectName(QStringLiteral("berryDim"));
-    m_skinName->setWordWrap(true);
-    showcaseLayout->addWidget(m_skinName);
-
-    auto* showcaseFoot = new QHBoxLayout;
-    auto* openSkins = button(tr("Открыть скины"), showcase, QString(), gSkin());
-    connect(openSkins, &QPushButton::clicked, this, [this] { goToPage(2); });
-    showcaseFoot->addWidget(openSkins);
-    showcaseFoot->addStretch(1);
-    showcaseLayout->addLayout(showcaseFoot);
-
-    body->addWidget(showcase, 0);
-    layout->addLayout(body, 1);
+    layout->addLayout(row);
+    layout->addStretch(1);
 
     return page(content);
 }
@@ -1275,22 +1702,22 @@ QWidget* Panel::buildAccount()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(28, 24, 28, 24);
-    layout->setSpacing(18);
+    layout->setContentsMargins(26, 20, 26, 20);
+    layout->setSpacing(16);
 
     layout->addWidget(pageHeader(content, tr("АККАУНТ"), tr("Вход"),
-                                 tr("Только через Telegram-бота — Microsoft-аккаунт не нужен.")));
+                                 tr("Только через Telegram-бота. Microsoft-аккаунт и лицензия не нужны.")));
 
     auto* body = new QHBoxLayout;
-    body->setSpacing(18);
+    body->setSpacing(16);
 
     auto* left = new QVBoxLayout;
     left->setSpacing(14);
 
     auto* loginCard = card(content);
     auto* loginLayout = new QVBoxLayout(loginCard);
-    loginLayout->setContentsMargins(22, 20, 22, 20);
-    loginLayout->setSpacing(9);
+    loginLayout->setContentsMargins(18, 14, 18, 16);
+    loginLayout->setSpacing(8);
     loginLayout->addWidget(caption(tr("ВХОД ЧЕРЕЗ TELEGRAM"), loginCard));
 
     auto* nickCaption = new QLabel(tr("Ник в Minecraft"), loginCard);
@@ -1298,29 +1725,28 @@ QWidget* Panel::buildAccount()
     loginLayout->addWidget(nickCaption);
 
     auto* nickRow = new QHBoxLayout;
-    nickRow->setSpacing(10);
+    nickRow->setSpacing(8);
     m_nick = new QLineEdit(loginCard);
     m_nick->setPlaceholderText(tr("3–16 символов: латиница, цифры, _"));
-    m_nick->setMinimumHeight(42);
+    m_nick->setMinimumHeight(38);
+    m_nick->setFont(theme::regular(13));
     nickRow->addWidget(m_nick, 1);
-    m_login = button(tr("Войти через Telegram"), loginCard, QStringLiteral("berryPrimary"), gTelegram());
-    m_login->setMinimumHeight(42);
+    m_login = button(tr("Войти через Telegram"), loginCard, PixelButton::Primary, gTelegram());
+    m_login->setMinimumHeight(38);
     connect(m_login, &QPushButton::clicked, this, &Panel::onAuthClicked);
     nickRow->addWidget(m_login);
     loginLayout->addLayout(nickRow);
 
-    m_authStatus = new QLabel(tr("Введи ник и подтверди вход в боте."), loginCard);
+    m_authStatus = new QLabel(loginCard);
     m_authStatus->setWordWrap(true);
-    m_authStatus->setMinimumHeight(38);
     setStatusLabel(m_authStatus, tr("Введи ник и подтверди вход в боте."), theme::Dim);
     loginLayout->addWidget(m_authStatus);
 
-    loginLayout->addSpacing(2);
     loginLayout->addWidget(rule(loginCard));
 
     auto* secondary = new QHBoxLayout;
     secondary->setSpacing(8);
-    m_openTelegram = button(tr("Скопировать ссылку"), loginCard, QString(), gCopy());
+    m_openTelegram = button(tr("Скопировать ссылку"), loginCard, PixelButton::Ghost, gCopy());
     connect(m_openTelegram, &QPushButton::clicked, this, [this] {
         const QString link = m_auth->pendingLink();
         if (link.isEmpty()) {
@@ -1331,7 +1757,7 @@ QWidget* Panel::buildAccount()
         setStatusLabel(m_authStatus, tr("Ссылка скопирована — открой её в Telegram или браузере."), theme::Ok);
     });
     m_openTelegram->hide();
-    m_logout = button(tr("Выйти"), loginCard, QStringLiteral("berryGhost"), gLogout());
+    m_logout = button(tr("Выйти"), loginCard, PixelButton::Ghost, gLogout());
     connect(m_logout, &QPushButton::clicked, this, [this] {
         m_auth->logout();
         refreshAuth();
@@ -1344,8 +1770,8 @@ QWidget* Panel::buildAccount()
 
     auto* steps = card(content);
     auto* stepsLayout = new QVBoxLayout(steps);
-    stepsLayout->setContentsMargins(22, 20, 22, 20);
-    stepsLayout->setSpacing(11);
+    stepsLayout->setContentsMargins(18, 14, 18, 16);
+    stepsLayout->setSpacing(10);
     stepsLayout->addWidget(caption(tr("КАК ЭТО РАБОТАЕТ"), steps));
 
     const QVector<QPair<QString, QString>> rows{
@@ -1356,13 +1782,12 @@ QWidget* Panel::buildAccount()
     };
     for (const auto& row : rows) {
         auto* line = new QHBoxLayout;
-        line->setSpacing(12);
+        line->setSpacing(10);
         auto* number = new QLabel(row.first, steps);
         number->setAlignment(Qt::AlignCenter);
         number->setFixedSize(24, 24);
-        number->setFont(theme::semiBold(11));
-        number->setStyleSheet(QStringLiteral(
-            "color:#FF86A5; background:#1A1219; border:2px solid #6E1B31;"));
+        number->setFont(theme::spaced(12, 0, true));
+        number->setStyleSheet(QStringLiteral("color:#FF9DB4; background:#241018; border:2px solid #6E1430;"));
         auto* text = new QLabel(row.second, steps);
         text->setObjectName(QStringLiteral("berryMuted"));
         text->setWordWrap(true);
@@ -1372,13 +1797,12 @@ QWidget* Panel::buildAccount()
     }
     left->addWidget(steps);
     left->addStretch(1);
-
     body->addLayout(left, 1);
 
     auto* tips = card(content);
-    tips->setFixedWidth(300);
+    tips->setFixedWidth(320);
     auto* tipsLayout = new QVBoxLayout(tips);
-    tipsLayout->setContentsMargins(20, 18, 20, 18);
+    tipsLayout->setContentsMargins(16, 14, 16, 16);
     tipsLayout->setSpacing(10);
     tipsLayout->addWidget(caption(tr("ПОДСКАЗКИ"), tips));
 
@@ -1387,7 +1811,7 @@ QWidget* Panel::buildAccount()
         row->setSpacing(10);
         auto* icon = new QLabel(tips);
         icon->setPixmap(theme::pixelPixmap(glyph, theme::Accent));
-        icon->setFixedSize(16, 16);
+        icon->setFixedSize(18, 18);
         auto* label = new QLabel(text, tips);
         label->setObjectName(QStringLiteral("berryDim"));
         label->setWordWrap(true);
@@ -1398,6 +1822,7 @@ QWidget* Panel::buildAccount()
     addTip(gShield(), tr("Один ник — один человек. Передавать вход нельзя."));
     addTip(gKey(), tr("Токен входа живёт 30 дней, потом нужен новый Start."));
     addTip(gTelegram(), tr("Всё подтверждение — одна кнопка Start в боте."));
+    addTip(gClock(), tr("Первый вход после вайтлиста может занять минуту."));
 
     tipsLayout->addStretch(1);
     tipsLayout->addWidget(rule(tips));
@@ -1405,8 +1830,7 @@ QWidget* Panel::buildAccount()
     auto* bot = new QLabel(QStringLiteral("@killberriesbot"), tips);
     bot->setObjectName(QStringLiteral("berryMono"));
     tipsLayout->addWidget(bot);
-    auto* openBot = button(tr("Открыть бота"), tips, QString(), gTelegram());
-    setGlyph(openBot, gTelegram(), theme::Telegram);
+    auto* openBot = button(tr("Открыть бота"), tips, PixelButton::Normal, gTelegram());
     connect(openBot, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(TelegramUrl)); });
     tipsLayout->addWidget(openBot);
 
@@ -1421,22 +1845,21 @@ QWidget* Panel::buildSkins()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(28, 24, 28, 24);
-    layout->setSpacing(16);
+    layout->setContentsMargins(26, 18, 26, 18);
+    layout->setSpacing(12);
 
     layout->addWidget(pageHeader(content, tr("QUICK SKIN"), tr("Скины"),
                                  tr("Скин ставится прямо в библиотеку Quick Skin — в игре он появится сразу.")));
 
     auto* modelCard = card(content);
     auto* modelLayout = new QVBoxLayout(modelCard);
-    modelLayout->setContentsMargins(20, 16, 20, 16);
-    modelLayout->setSpacing(9);
-
+    modelLayout->setContentsMargins(16, 10, 16, 12);
+    modelLayout->setSpacing(6);
     auto* modelHead = new QHBoxLayout;
     modelHead->setSpacing(10);
     modelHead->addWidget(caption(tr("МОДЕЛЬ"), modelCard));
     modelHead->addStretch(1);
-    auto* modelHint = new QLabel(tr("3D-модель показывается на главном экране."), modelCard);
+    auto* modelHint = new QLabel(tr("3D-модель видна здесь и на главном экране."), modelCard);
     modelHint->setObjectName(QStringLiteral("berryDim"));
     modelHead->addWidget(modelHint);
     modelLayout->addLayout(modelHead);
@@ -1446,7 +1869,7 @@ QWidget* Panel::buildSkins()
     auto* modelGroup = new QButtonGroup(modelCard);
     modelGroup->setExclusive(true);
     const auto addModel = [&](const QString& text, const QString& value) {
-        auto* b = button(text, modelCard, QStringLiteral("berrySegment"));
+        auto* b = button(text, modelCard, PixelButton::Segment);
         b->setCheckable(true);
         modelGroup->addButton(b);
         connect(b, &QPushButton::clicked, this, [this, value] {
@@ -1464,47 +1887,56 @@ QWidget* Panel::buildSkins()
     layout->addWidget(modelCard);
 
     auto* columns = new QHBoxLayout;
-    columns->setSpacing(16);
+    columns->setSpacing(14);
+
+    // The 3D skin is the one allowed exception to the pixel grid.
+    auto* previewCard = card(content);
+    previewCard->setFixedWidth(272);
+    previewCard->setFixedHeight(314);
+    auto* previewLayout = new QVBoxLayout(previewCard);
+    previewLayout->setContentsMargins(10, 8, 10, 10);
+    previewLayout->setSpacing(4);
+    previewLayout->addWidget(caption(tr("ПРЕДПРОСМОТР"), previewCard));
+    m_skinPagePreview = new Skin3D(previewCard);
+    m_skinPagePreview->setFixedHeight(262);
+    previewLayout->addWidget(m_skinPagePreview);
+    columns->addWidget(previewCard, 0);
 
     auto* skinCard = card(content);
+    skinCard->setFixedHeight(314);
     auto* skinLayout = new QVBoxLayout(skinCard);
-    skinLayout->setContentsMargins(20, 16, 20, 16);
-    skinLayout->setSpacing(9);
+    skinLayout->setContentsMargins(16, 10, 16, 12);
+    skinLayout->setSpacing(6);
     skinLayout->addWidget(caption(tr("СКИНЫ В БИБЛИОТЕКЕ"), skinCard));
-    m_skinList = new QListWidget(skinCard);
-    m_skinList->setMinimumHeight(250);
-    m_skinList->setSelectionMode(QAbstractItemView::SingleSelection);
-    skinLayout->addWidget(m_skinList, 1);
     auto* skinButtons = new QHBoxLayout;
     skinButtons->setSpacing(8);
-    auto* pickSkin = button(tr("Выбрать файл"), skinCard, QString(), gFolder());
+    auto* pickSkin = button(tr("Выбрать файл"), skinCard, PixelButton::Normal, gFolder());
     connect(pickSkin, &QPushButton::clicked, this, &Panel::pickSkin);
-    auto* applySkin = button(tr("Применить"), skinCard, QStringLiteral("berryPrimary"), gCheck());
+    auto* applySkin = button(tr("Применить"), skinCard, PixelButton::Primary, gCheck());
     connect(applySkin, &QPushButton::clicked, this, &Panel::applySelectedSkin);
     skinButtons->addWidget(pickSkin);
     skinButtons->addWidget(applySkin);
     skinButtons->addStretch(1);
     skinLayout->addLayout(skinButtons);
+    m_skinList = new QListWidget(skinCard);
+    m_skinList->setFixedHeight(198);
+    m_skinList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_skinList->setFont(theme::regular(12));
+    skinLayout->addWidget(m_skinList);
+    skinLayout->addStretch(1);
     columns->addWidget(skinCard, 3);
 
     auto* capeCard = card(content);
+    capeCard->setFixedHeight(314);
     auto* capeLayout = new QVBoxLayout(capeCard);
-    capeLayout->setContentsMargins(20, 16, 20, 16);
-    capeLayout->setSpacing(9);
+    capeLayout->setContentsMargins(16, 10, 16, 12);
+    capeLayout->setSpacing(6);
     capeLayout->addWidget(caption(tr("ПЛАЩИ"), capeCard));
-    m_capeList = new QListWidget(capeCard);
-    m_capeList->setMinimumHeight(190);
-    m_capeList->setSelectionMode(QAbstractItemView::SingleSelection);
-    capeLayout->addWidget(m_capeList, 1);
-    m_capeName = new QLabel(tr("Плащ выключен"), capeCard);
-    m_capeName->setObjectName(QStringLiteral("berryDim"));
-    capeLayout->addWidget(m_capeName);
-
     auto* capeButtons = new QHBoxLayout;
     capeButtons->setSpacing(8);
-    auto* pickCape = button(tr("Выбрать"), capeCard, QString(), gFolder());
+    auto* pickCape = button(tr("Выбрать"), capeCard, PixelButton::Normal, gFolder());
     connect(pickCape, &QPushButton::clicked, this, &Panel::pickCape);
-    auto* applyCape = button(tr("Включить"), capeCard, QStringLiteral("berryPrimary"), gCheck());
+    auto* applyCape = button(tr("Включить"), capeCard, PixelButton::Primary, gCheck());
     connect(applyCape, &QPushButton::clicked, this, [this] {
         auto* item = m_capeList ? m_capeList->currentItem() : nullptr;
         if (!item) {
@@ -1519,7 +1951,7 @@ QWidget* Panel::buildSkins()
         setStatusLabel(m_skinStatus, tr("Плащ включён: %1").arg(item->text().mid(2)), theme::Ok);
         refreshSkins();
     });
-    auto* clearCape = button(tr("Убрать"), capeCard, QStringLiteral("berryGhost"), gTrash());
+    auto* clearCape = button(tr("Убрать"), capeCard, PixelButton::Ghost, gTrash());
     connect(clearCape, &QPushButton::clicked, this, [this] {
         Skins::clearCape();
         setStatusLabel(m_skinStatus, tr("Плащ выключен."), theme::Ok);
@@ -1530,14 +1962,24 @@ QWidget* Panel::buildSkins()
     capeButtons->addWidget(clearCape);
     capeButtons->addStretch(1);
     capeLayout->addLayout(capeButtons);
+    m_capeName = new QLabel(tr("Плащ выключен"), capeCard);
+    m_capeName->setObjectName(QStringLiteral("berryDim"));
+    capeLayout->addWidget(m_capeName);
+    m_capeList = new QListWidget(capeCard);
+    m_capeList->setFixedHeight(150);
+    m_capeList->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_capeList->setFont(theme::regular(12));
+    capeLayout->addWidget(m_capeList);
+    capeLayout->addStretch(1);
     columns->addWidget(capeCard, 2);
 
-    layout->addLayout(columns, 1);
+    layout->addLayout(columns);
 
     m_skinStatus = new QLabel(content);
     m_skinStatus->setWordWrap(true);
     setStatusLabel(m_skinStatus, tr("Quick Skin проверяется…"), theme::Dim);
     layout->addWidget(m_skinStatus);
+    layout->addStretch(1);
 
     connect(m_skinList, &QListWidget::itemSelectionChanged, this, [this] {
         if (auto* item = m_skinList->currentItem())
@@ -1619,6 +2061,11 @@ void Panel::refreshSkinPreview(const QString& path)
 
     const QString capePath = Skins::currentCape();
     m_skinPreview->setCape(capePath.isEmpty() ? QImage() : QImage(capePath));
+    if (m_skinPagePreview) {
+        m_skinPagePreview->setSlim(slim);
+        m_skinPagePreview->setSkin(image);
+        m_skinPagePreview->setCape(capePath.isEmpty() ? QImage() : QImage(capePath));
+    }
 }
 
 void Panel::pickSkin()
@@ -1692,25 +2139,29 @@ QWidget* Panel::buildSettings()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(32, 26, 32, 26);
-    layout->setSpacing(16);
+    layout->setContentsMargins(26, 20, 26, 20);
+    layout->setSpacing(14);
 
     layout->addWidget(pageHeader(content, tr("НАСТРОЙКИ"), tr("Сборка"),
                                  tr("Моды, графика, память и Java. Применяется сразу.")));
 
     auto* columns = new QHBoxLayout;
-    columns->setSpacing(16);
+    columns->setSpacing(14);
 
     auto* left = new QVBoxLayout;
-    left->setSpacing(16);
+    left->setSpacing(14);
 
     auto* mods = card(content);
     auto* modsLayout = new QVBoxLayout(mods);
-    modsLayout->setContentsMargins(20, 18, 20, 18);
-    modsLayout->setSpacing(8);
+    modsLayout->setContentsMargins(18, 14, 18, 16);
+    modsLayout->setSpacing(6);
     modsLayout->addWidget(caption(tr("МОДЫ"), mods));
+    auto* modGrid = new QGridLayout;
+    modGrid->setHorizontalSpacing(18);
+    modGrid->setVerticalSpacing(2);
+    int modIndex = 0;
     for (const Tweaks::Mod& mod : Tweaks::mods()) {
-        auto* check = new QCheckBox(mod.label, mods);
+        auto* check = new PixelCheck(mod.label, mods);
         check->setToolTip(QStringLiteral("%1 — %2").arg(mod.label, mod.hint));
         m_modChecks.append(check);
         connect(check, &QCheckBox::toggled, this, [this, mod](bool on) {
@@ -1739,9 +2190,11 @@ QWidget* Panel::buildSettings()
             }
             applyTweaks(mod.label);
         });
-        modsLayout->addWidget(check);
+        modGrid->addWidget(check, modIndex / 2, modIndex % 2);
+        ++modIndex;
     }
-    modsLayout->addSpacing(4);
+    modsLayout->addLayout(modGrid);
+    modsLayout->addSpacing(2);
     auto* locked = new QLabel(tr("Всегда включены: JourneyMap · Emotecraft · Immersive Paintings · Not Enough Animations"),
                               mods);
     locked->setObjectName(QStringLiteral("berryDim"));
@@ -1751,11 +2204,11 @@ QWidget* Panel::buildSettings()
 
     auto* graphics = card(content);
     auto* graphicsLayout = new QVBoxLayout(graphics);
-    graphicsLayout->setContentsMargins(20, 18, 20, 18);
-    graphicsLayout->setSpacing(8);
+    graphicsLayout->setContentsMargins(18, 14, 18, 16);
+    graphicsLayout->setSpacing(6);
     graphicsLayout->addWidget(caption(tr("ГРАФИКА"), graphics));
-    m_packs = new QCheckBox(tr("Ресурспаки"), graphics);
-    m_shaders = new QCheckBox(tr("Шейдеры"), graphics);
+    m_packs = new PixelCheck(tr("Ресурспаки"), graphics);
+    m_shaders = new PixelCheck(tr("Шейдеры"), graphics);
     connect(m_packs, &QCheckBox::toggled, this, [this](bool on) {
         if (m_loading)
             return;
@@ -1775,23 +2228,25 @@ QWidget* Panel::buildSettings()
     columns->addLayout(left, 1);
 
     auto* right = new QVBoxLayout;
-    right->setSpacing(16);
+    right->setSpacing(14);
 
     auto* memoryCard = card(content);
     auto* memoryLayout = new QVBoxLayout(memoryCard);
-    memoryLayout->setContentsMargins(20, 18, 20, 18);
-    memoryLayout->setSpacing(10);
+    memoryLayout->setContentsMargins(18, 14, 18, 16);
+    memoryLayout->setSpacing(8);
     memoryLayout->addWidget(caption(tr("ПАМЯТЬ · ВСЕГО %1 ГБ").arg(totalRamGb()), memoryCard));
     auto* memoryRow = new QHBoxLayout;
     memoryRow->setSpacing(8);
-    auto* minus = button(QString(), memoryCard, QStringLiteral("berryIcon"), gMinus());
+    auto* minus = button(QString(), memoryCard, PixelButton::Icon, gMinus());
     minus->setToolTip(tr("Меньше памяти"));
     minus->setAccessibleName(tr("Меньше памяти"));
     m_memory = new QSpinBox(memoryCard);
     m_memory->setRange(2, qMax(4, totalRamGb()));
     m_memory->setSuffix(tr(" ГБ"));
     m_memory->setMinimumHeight(40);
-    auto* plus = button(QString(), memoryCard, QStringLiteral("berryIcon"), gPlus());
+    m_memory->setAlignment(Qt::AlignCenter);
+    m_memory->setFont(theme::spaced(14, 0.4, true));
+    auto* plus = button(QString(), memoryCard, PixelButton::Icon, gPlus());
     plus->setToolTip(tr("Больше памяти"));
     plus->setAccessibleName(tr("Больше памяти"));
     connect(minus, &QPushButton::clicked, this, [this] { m_memory->setValue(m_memory->value() - 1); });
@@ -1805,17 +2260,17 @@ QWidget* Panel::buildSettings()
 
     auto* javaCard = card(content);
     auto* javaLayout = new QVBoxLayout(javaCard);
-    javaLayout->setContentsMargins(20, 18, 20, 18);
-    javaLayout->setSpacing(10);
+    javaLayout->setContentsMargins(18, 14, 18, 16);
+    javaLayout->setSpacing(8);
     javaLayout->addWidget(caption(tr("JAVA"), javaCard));
     m_javaPath = new QLineEdit(javaCard);
     m_javaPath->setPlaceholderText(tr("Автоматически"));
-    m_javaPath->setMinimumHeight(40);
+    m_javaPath->setMinimumHeight(38);
     connect(m_javaPath, &QLineEdit::editingFinished, this, &Panel::onJavaEdited);
     javaLayout->addWidget(m_javaPath);
     auto* javaRow = new QHBoxLayout;
     javaRow->setSpacing(8);
-    auto* browse = button(tr("Обзор…"), javaCard);
+    auto* browse = button(tr("Обзор…"), javaCard, PixelButton::Normal, gFolder());
     connect(browse, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(this, tr("Выберите Java"), m_javaPath->text(),
                                                           QStringLiteral("javaw.exe (javaw.exe);;Все файлы (*)"));
@@ -1824,7 +2279,7 @@ QWidget* Panel::buildSettings()
         m_javaPath->setText(QDir::toNativeSeparators(path));
         onJavaEdited();
     });
-    auto* autoJava = button(tr("Авто"), javaCard);
+    auto* autoJava = button(tr("Авто"), javaCard, PixelButton::Ghost);
     connect(autoJava, &QPushButton::clicked, this, [this] {
         m_javaPath->clear();
         m_instance->settings()->set(QStringLiteral("OverrideJavaLocation"), false);
@@ -1838,14 +2293,14 @@ QWidget* Panel::buildSettings()
 
     auto* actionsCard = card(content);
     auto* actionsLayout = new QVBoxLayout(actionsCard);
-    actionsLayout->setContentsMargins(20, 18, 20, 18);
-    actionsLayout->setSpacing(10);
+    actionsLayout->setContentsMargins(18, 14, 18, 16);
+    actionsLayout->setSpacing(8);
     actionsLayout->addWidget(caption(tr("ДЕЙСТВИЯ"), actionsCard));
-    auto* apply = button(tr("Применить"), actionsCard, QStringLiteral("berryPrimary"));
-    apply->setMinimumHeight(40);
+    auto* apply = button(tr("Применить"), actionsCard, PixelButton::Primary, gCheck());
+    apply->setMinimumHeight(38);
     connect(apply, &QPushButton::clicked, this, [this] { applyTweaks(tr("Настройки")); });
-    auto* reset = button(tr("Сбросить конфиги"), actionsCard);
-    reset->setMinimumHeight(40);
+    auto* reset = button(tr("Сбросить конфиги"), actionsCard, PixelButton::Normal, gTrash());
+    reset->setMinimumHeight(38);
     connect(reset, &QPushButton::clicked, this, [this] {
         const QString backup = Tweaks::resetConfigs();
         if (backup.isEmpty()) {
@@ -1875,42 +2330,49 @@ QWidget* Panel::buildDiagnostics()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(32, 26, 32, 26);
-    layout->setSpacing(16);
+    layout->setContentsMargins(26, 20, 26, 20);
+    layout->setSpacing(14);
 
     layout->addWidget(pageHeader(content, tr("ДИАГНОСТИКА"), tr("Состояние"),
                                  tr("Всё, что нужно, чтобы понять, почему игра не запускается.")));
 
     auto* status = card(content);
     auto* grid = new QGridLayout(status);
-    grid->setContentsMargins(22, 20, 22, 20);
-    grid->setHorizontalSpacing(24);
-    grid->setVerticalSpacing(12);
+    grid->setContentsMargins(18, 14, 18, 16);
+    grid->setHorizontalSpacing(18);
+    grid->setVerticalSpacing(0);
     const QStringList keys{ tr("Лаунчер"), tr("Экземпляр"), tr("Java"), tr("Моды"),
                             tr("Сборка"), tr("Память"), tr("Диск") };
     for (int i = 0; i < keys.size(); ++i) {
         auto* key = caption(keys.at(i), status);
-        key->setMinimumWidth(120);
+        key->setMinimumWidth(118);
         auto* value = new QLabel(QStringLiteral("—"), status);
         value->setObjectName(QStringLiteral("berryMono"));
         value->setWordWrap(true);
         value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        value->setMinimumHeight(26);
+        value->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
         m_diagValues.append(value);
-        grid->addWidget(key, i, 0, Qt::AlignTop);
-        grid->addWidget(value, i, 1);
+        grid->addWidget(key, i * 2, 0, Qt::AlignVCenter);
+        grid->addWidget(value, i * 2, 1, Qt::AlignVCenter);
+        if (i + 1 < keys.size()) {
+            auto* line = rule(status);
+            line->setStyleSheet(QStringLiteral("background:#151B24; border:none;"));
+            grid->addWidget(line, i * 2 + 1, 0, 1, 2);
+        }
     }
     grid->setColumnStretch(1, 1);
     layout->addWidget(status);
 
     auto* buttons = new QHBoxLayout;
-    buttons->setSpacing(10);
-    auto* refresh = button(tr("Обновить"), content, QString(), gRefresh());
+    buttons->setSpacing(8);
+    auto* refresh = button(tr("Обновить"), content, PixelButton::Normal, gRefresh());
     connect(refresh, &QPushButton::clicked, this, &Panel::refreshDiagnostics);
-    auto* folder = button(tr("Открыть папку"), content, QString(), gFolder());
+    auto* folder = button(tr("Открыть папку"), content, PixelButton::Normal, gFolder());
     connect(folder, &QPushButton::clicked, this, [] {
         QDesktopServices::openUrl(QUrl::fromLocalFile(Config::gameRoot()));
     });
-    auto* copy = button(tr("Скопировать отчёт"), content, QStringLiteral("berryPrimary"), gCopy());
+    auto* copy = button(tr("Скопировать отчёт"), content, PixelButton::Primary, gCopy());
     connect(copy, &QPushButton::clicked, this, [this] {
         const QStringList keys{ tr("Лаунчер"), tr("Экземпляр"), tr("Java"), tr("Моды"),
                                 tr("Сборка"), tr("Память"), tr("Диск") };
@@ -1940,43 +2402,56 @@ QWidget* Panel::buildAbout()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(32, 26, 32, 26);
-    layout->setSpacing(16);
+    layout->setContentsMargins(26, 18, 26, 18);
+    layout->setSpacing(14);
 
-    layout->addWidget(pageHeader(content, tr("О ПРОГРАММЕ"), tr("BerryTrip"),
+    layout->addWidget(pageHeader(content, tr("О ЛАУНЧЕРЕ"), tr("BerryTrip"),
                                  tr("Неофициальный форк Prism Launcher для сборки BerryTrip.")));
 
-    auto* head = new QFrame;
-    head->setObjectName(QStringLiteral("berryHero"));
+    auto* head = new PixelFrame(PixelFrame::Hero, content);
     auto* headRow = new QHBoxLayout(head);
-    headRow->setContentsMargins(24, 22, 24, 22);
-    headRow->setSpacing(20);
+    headRow->setContentsMargins(18, 14, 18, 18);
+    headRow->setSpacing(18);
     auto* logo = new QLabel(head);
-    logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(72, 72, Qt::KeepAspectRatio, Qt::FastTransformation));
-    headRow->addWidget(logo);
+    logo->setPixmap(theme::pixelArt(gLogoSprite(), theme::Accent, 5));
+    logo->setFixedSize(80, 80);
+    headRow->addWidget(logo, 0, Qt::AlignVCenter);
     auto* text = new QVBoxLayout;
-    text->setSpacing(6);
-    auto* title = new QLabel(QStringLiteral("BerryTrip %1").arg(Config::version()), head);
+    text->setSpacing(4);
+    auto* title = new QLabel(QStringLiteral("BERRYTRIP %1").arg(Config::version()), head);
     title->setObjectName(QStringLiteral("berryTitle"));
+    title->setFont(theme::spaced(24, 1.2, true));
     auto* sub = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), head);
     sub->setObjectName(QStringLiteral("berryCaption"));
+    auto* chips = new QHBoxLayout;
+    chips->setSpacing(6);
+    auto* chipPixel = new QLabel(head);
+    setChip(chipPixel, tr("PIXEL UI"), ToneAccent);
+    auto* chipFree = new QLabel(head);
+    setChip(chipFree, tr("БЕЗ MICROSOFT"), ToneOk);
+    chips->addWidget(chipPixel);
+    chips->addWidget(chipFree);
+    chips->addStretch(1);
     text->addWidget(title);
     text->addWidget(sub);
+    text->addSpacing(6);
+    text->addLayout(chips);
     headRow->addLayout(text, 1);
     layout->addWidget(head);
 
+    auto* columns = new QHBoxLayout;
+    columns->setSpacing(14);
+
     auto* links = card(content);
     auto* linksLayout = new QVBoxLayout(links);
-    linksLayout->setContentsMargins(20, 18, 20, 18);
+    linksLayout->setContentsMargins(18, 12, 18, 14);
     linksLayout->setSpacing(2);
     linksLayout->addWidget(caption(tr("ССЫЛКИ"), links));
-    linksLayout->addSpacing(6);
+    linksLayout->addSpacing(4);
 
     const auto addLink = [&](const QString& text, const QString& url) {
-        auto* b = button(QStringLiteral(">  %1").arg(text), links, QStringLiteral("berryGhost"));
-        b->setMinimumHeight(32);
-        b->setStyleSheet(QStringLiteral("text-align: left; padding-left: 0px;"));
+        auto* b = button(QStringLiteral("  %1").arg(text), links, PixelButton::Ghost, gExternal());
+        b->setFixedHeight(28);
         connect(b, &QPushButton::clicked, this, [url] { QDesktopServices::openUrl(QUrl(url)); });
         linksLayout->addWidget(b);
     };
@@ -1985,36 +2460,23 @@ QWidget* Panel::buildAbout()
     addLink(tr("Релизы лаунчера"), QString::fromLatin1(ReleasesUrl));
     addLink(tr("Исходники (GPL-3.0)"), QString::fromLatin1(SourcesUrl));
     addLink(tr("Prism Launcher — оригинал (GPL-3.0)"), QString::fromLatin1(UpstreamUrl));
-    layout->addWidget(links);
+    linksLayout->addStretch(1);
+    columns->addWidget(links, 1);
 
-    auto* legal = card(content);
-    auto* legalLayout = new QVBoxLayout(legal);
-    legalLayout->setContentsMargins(20, 18, 20, 18);
-    legalLayout->setSpacing(6);
-    legalLayout->addWidget(caption(tr("ЛИЦЕНЗИЯ"), legal));
-    auto* legalText = new QLabel(
-        tr("Распространяется по GNU GPL v3. Исходный код этой сборки: github.com/evilvalue/prism-berry, "
-           "ветка berry, тег v%1 — он соответствует полученному файлу. © 2022-2026 Prism Launcher "
-           "Contributors, © 2021-2022 PolyMC Contributors, © 2012-2021 MultiMC Contributors, © 2026 BerryTrip.\n\n"
-           "Minecraft — торговая марка Mojang Studios. Проект не связан с Mojang и Microsoft.")
-            .arg(Config::version()),
-        legal);
-    legalText->setObjectName(QStringLiteral("berryDim"));
-    legalText->setWordWrap(true);
-    legalLayout->addWidget(legalText);
-    layout->addWidget(legal);
+    auto* right = new QVBoxLayout;
+    right->setSpacing(14);
 
     auto* updateCard = card(content);
     auto* updateLayout = new QVBoxLayout(updateCard);
-    updateLayout->setContentsMargins(20, 18, 20, 18);
+    updateLayout->setContentsMargins(18, 12, 18, 14);
     updateLayout->setSpacing(8);
     updateLayout->addWidget(caption(tr("ОБНОВЛЕНИЕ"), updateCard));
     auto* updateButtons = new QHBoxLayout;
     updateButtons->setSpacing(8);
-    auto* check = button(tr("Проверить обновление"), updateCard, QStringLiteral("berryPrimary"));
+    auto* check = button(tr("Проверить обновление"), updateCard, PixelButton::Primary, gDownload());
     connect(check, &QPushButton::clicked, this, &Panel::checkUpdates);
     updateButtons->addWidget(check);
-    m_aboutUpdate = button(tr("Скачать обновление"), updateCard);
+    m_aboutUpdate = button(tr("Скачать обновление"), updateCard, PixelButton::Normal, gDownload());
     m_aboutUpdate->hide();
     connect(m_aboutUpdate, &QPushButton::clicked, this, &Panel::installUpdate);
     updateButtons->addWidget(m_aboutUpdate);
@@ -2024,7 +2486,28 @@ QWidget* Panel::buildAbout()
     m_aboutStatus->setObjectName(QStringLiteral("berryDim"));
     m_aboutStatus->setWordWrap(true);
     updateLayout->addWidget(m_aboutStatus);
-    layout->addWidget(updateCard);
+    right->addWidget(updateCard);
+
+    auto* legal = card(content);
+    auto* legalLayout = new QVBoxLayout(legal);
+    legalLayout->setContentsMargins(18, 12, 18, 14);
+    legalLayout->setSpacing(6);
+    legalLayout->addWidget(caption(tr("ЛИЦЕНЗИЯ"), legal));
+    auto* legalText = new QLabel(
+        tr("GNU GPL v3. Исходный код: github.com/evilvalue/prism-berry, ветка berry, тег v%1 — он "
+           "соответствует полученному файлу. © 2022-2026 Prism Launcher Contributors, © 2021-2022 PolyMC "
+           "Contributors, © 2012-2021 MultiMC Contributors, © 2026 BerryTrip.\n\n"
+           "Minecraft — торговая марка Mojang Studios. Проект не связан с Mojang и Microsoft.")
+            .arg(Config::version()),
+        legal);
+    legalText->setObjectName(QStringLiteral("berryDim"));
+    legalText->setWordWrap(true);
+    legalLayout->addWidget(legalText);
+    right->addWidget(legal);
+    right->addStretch(1);
+
+    columns->addLayout(right, 1);
+    layout->addLayout(columns);
     layout->addStretch(1);
 
     return page(content);
@@ -2195,8 +2678,6 @@ void Panel::startSync()
 
 void Panel::startPing()
 {
-    m_motd->setText(tr("Проверяю сервер…"));
-    m_players->setText(tr("Игроки: —"));
     m_ping->query(Config::serverHost(), Config::serverPort());
 }
 
@@ -2363,6 +2844,38 @@ void installSoloUi(QMainWindow* window)
     window->installEventFilter(new OverlayFilter(panel, window));
     qApp->installEventFilter(new PopupFilter(panel, qApp));
     window->setFixedSize(1240, 760);
+
+    // Keep running when the window goes away: closing it hides BerryTrip to the
+    // tray instead of killing a download or the game that was just launched.
+    qApp->setQuitOnLastWindowClosed(false);
+    if (QSystemTrayIcon::isSystemTrayAvailable()) {
+        auto* tray = new QSystemTrayIcon(window);
+        tray->setIcon(QIcon(theme::pixelArt(gLogoSprite(), theme::Accent, 4)));
+        tray->setToolTip(QStringLiteral("BerryTrip %1").arg(Config::version()));
+
+        auto* menu = new QMenu(window);
+        auto* open = menu->addAction(QObject::tr("Открыть"));
+        auto* hide = menu->addAction(QObject::tr("Свернуть в трей"));
+        menu->addSeparator();
+        auto* quit = menu->addAction(QObject::tr("Выход"));
+        tray->setContextMenu(menu);
+
+        const auto restore = [window] {
+            window->showNormal();
+            window->raise();
+            window->activateWindow();
+        };
+        QObject::connect(open, &QAction::triggered, window, restore);
+        QObject::connect(hide, &QAction::triggered, window, [window] { window->hide(); });
+        QObject::connect(quit, &QAction::triggered, qApp, &QApplication::quit);
+        QObject::connect(tray, &QSystemTrayIcon::activated, window,
+                         [restore](QSystemTrayIcon::ActivationReason reason) {
+                             if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick)
+                                 restore();
+                         });
+        tray->show();
+        window->installEventFilter(new TrayFilter(window, tray));
+    }
 }
 
 }  // namespace berry

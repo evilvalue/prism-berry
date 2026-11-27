@@ -19,6 +19,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QMainWindow;
+class QPaintEvent;
 class QProgressBar;
 class QPushButton;
 class QSpinBox;
@@ -44,6 +45,9 @@ class Panel : public QWidget {
 
     /// Shows a short message in the panel instead of opening a Prism dialog.
     void notice(const QString& text);
+
+   protected:
+    void paintEvent(QPaintEvent* event) override;
 
    private:
     QWidget* buildHome();
@@ -82,6 +86,7 @@ class Panel : public QWidget {
     TelegramAuth* m_auth = nullptr;
     ServerPing* m_ping = nullptr;
     QTimer* m_pollTimer = nullptr;
+    QTimer* m_pingTimer = nullptr;
     QStackedWidget* m_pages = nullptr;
     QButtonGroup* m_nav = nullptr;
     bool m_syncFinished = false;
@@ -113,6 +118,7 @@ class Panel : public QWidget {
     QVector<QCheckBox*> m_modChecks;
 
     Skin3D* m_skinPreview = nullptr;
+    Skin3D* m_skinPagePreview = nullptr;
     QLabel* m_skinName = nullptr;
     QLabel* m_skinStatus = nullptr;
     QLabel* m_capeName = nullptr;

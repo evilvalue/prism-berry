@@ -22,7 +22,12 @@ if (-not $Files -or $Files.Count -eq 0) {
     if ($setup) { $Files += $setup.FullName }
 }
 
-$Files = $Files | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
+# -File passes a comma list as one string, so split it and resolve every
+# relative path against the repository root.
+$Files = @($Files | ForEach-Object { $_ -split '[,;]' } | ForEach-Object { $_.Trim() } |
+    Where-Object { $_ } | ForEach-Object {
+        if ([System.IO.Path]::IsPathRooted($_)) { $_ } else { Join-Path $root $_ }
+    }) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -Unique
 if (-not $Files) { throw 'Nothing to sign: build the launcher and the installer first.' }
 
 function Show-Signatures($paths) {

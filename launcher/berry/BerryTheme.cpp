@@ -29,6 +29,11 @@ QString registerFont(const QString& path)
     const QStringList families = QFontDatabase::applicationFontFamilies(id);
     return families.isEmpty() ? QString() : families.first();
 }
+
+void plot(QPainter& painter, int x, int y, int scale, const QColor& color)
+{
+    painter.fillRect(QRect(x * scale, y * scale, scale, scale), color);
+}
 }  // namespace
 
 void init()
@@ -64,8 +69,27 @@ QFont semiBold(int pixelSize)
     init();
     QFont font(g_familySemi);
     font.setPixelSize(pixelSize);
+    font.setBold(true);
     font.setStyleStrategy(QFont::NoAntialias);
     return font;
+}
+
+QFont spaced(int pixelSize, qreal spacing, bool bold)
+{
+    init();
+    QFont font(g_familySemi);
+    font.setPixelSize(pixelSize);
+    font.setBold(bold);
+    font.setLetterSpacing(QFont::AbsoluteSpacing, spacing);
+    font.setStyleStrategy(QFont::NoAntialias);
+    return font;
+}
+
+QColor mix(const QColor& a, const QColor& b, int percent)
+{
+    const qreal t = qBound(0, percent, 100) / 100.0;
+    return QColor(int(a.red() + (b.red() - a.red()) * t), int(a.green() + (b.green() - a.green()) * t),
+                  int(a.blue() + (b.blue() - a.blue()) * t));
 }
 
 QPixmap pixelPixmap(const QStringList& glyph, const QColor& color, int scale)
@@ -76,18 +100,80 @@ QPixmap pixelPixmap(const QStringList& glyph, const QColor& color, int scale)
     if (columns == 0 || glyph.isEmpty() || scale <= 0)
         return {};
 
-    QPixmap pixmap(columns * scale, glyph.size() * scale);
+    // One empty pixel all around for the hard outline; keeps the silhouette
+    // readable on every background without antialiasing.
+    const QSize size((columns + 2) * scale, (glyph.size() + 2) * scale);
+    QPixmap pixmap(size);
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, false);
     painter.setPen(Qt::NoPen);
-    painter.setBrush(color);
-    for (int row = 0; row < glyph.size(); ++row) {
-        const QString& line = glyph.at(row);
-        for (int column = 0; column < line.size(); ++column) {
-            if (line.at(column) == QLatin1Char('#'))
-                painter.fillRect(column * scale, row * scale, scale, scale, color);
+
+    const auto filled = [&](int x, int y) {
+        if (y < 0 || y >= glyph.size())
+            return false;
+        const QString& line = glyph.at(y);
+        return x >= 0 && x < line.size() && line.at(x) == QLatin1Char('#');
+    };
+
+    for (int y = 0; y < glyph.size(); ++y) {
+        for (int x = 0; x < columns; ++x) {
+            if (!filled(x, y))
+                continue;
+            if (!filled(x - 1, y) || !filled(x + 1, y) || !filled(x, y - 1) || !filled(x, y + 1))
+                plot(painter, x + 1, y + 1, scale, Ink);
+        }
+    }
+    for (int y = 0; y < glyph.size(); ++y) {
+        for (int x = 0; x < columns; ++x) {
+            if (filled(x, y))
+                plot(painter, x + 1, y + 1, scale, color);
+        }
+    }
+    return pixmap;
+}
+
+QPixmap pixelArt(const QStringList& rows, const QColor& body, int scale)
+{
+    int columns = 0;
+    for (const QString& row : rows)
+        columns = qMax(columns, int(row.size()));
+    if (columns == 0 || rows.isEmpty() || scale <= 0)
+        return {};
+
+    QPixmap pixmap(columns * scale, rows.size() * scale);
+    pixmap.fill(Qt::transparent);
+
+    QPainter painter(&pixmap);
+    painter.setRenderHint(QPainter::Antialiasing, false);
+    painter.setPen(Qt::NoPen);
+
+    for (int y = 0; y < rows.size(); ++y) {
+        const QString& line = rows.at(y);
+        for (int x = 0; x < line.size(); ++x) {
+            switch (line.at(x).toLatin1()) {
+                case '#':
+                    plot(painter, x, y, scale, body);
+                    break;
+                case '+':
+                    plot(painter, x, y, scale, mix(body, QColor(Qt::white), 55));
+                    break;
+                case '-':
+                    plot(painter, x, y, scale, mix(body, QColor(Qt::black), 40));
+                    break;
+                case 'o':
+                    plot(painter, x, y, scale, Ink);
+                    break;
+                case 'g':
+                    plot(painter, x, y, scale, QColor(0x5B, 0xD1, 0x6B));
+                    break;
+                case 'G':
+                    plot(painter, x, y, scale, QColor(0x2C, 0x7A, 0x3A));
+                    break;
+                default:
+                    break;
+            }
         }
     }
     return pixmap;
@@ -102,141 +188,114 @@ QIcon pixelIcon(const QStringList& glyph, const QColor& color)
     return icon;
 }
 
+void bevel(QPainter& painter, const QRect& rect, const QColor& fill, const QColor& border, const QColor& highlight,
+           const QColor& shadow)
+{
+    if (rect.width() <= 0 || rect.height() <= 0)
+        return;
+
+    painter.fillRect(rect, border);
+    const QRect inner = rect.adjusted(2, 2, -2, -2);
+    if (inner.width() <= 0 || inner.height() <= 0)
+        return;
+
+    painter.fillRect(inner, fill);
+    painter.fillRect(QRect(inner.left(), inner.top(), inner.width(), 1), highlight);
+    painter.fillRect(QRect(inner.left(), inner.top(), 1, inner.height()), highlight);
+    painter.fillRect(QRect(inner.left(), inner.bottom(), inner.width(), 1), shadow);
+    painter.fillRect(QRect(inner.right(), inner.top(), 1, inner.height()), shadow);
+}
+
+void inset(QPainter& painter, const QRect& rect, const QColor& fill, const QColor& border)
+{
+    painter.fillRect(rect, border);
+    const QRect inner = rect.adjusted(2, 2, -2, -2);
+    if (inner.width() <= 0 || inner.height() <= 0)
+        return;
+    painter.fillRect(inner, fill);
+    painter.fillRect(QRect(inner.left(), inner.top(), inner.width(), 1), mix(fill, Qt::black, 55));
+    painter.fillRect(QRect(inner.left(), inner.top(), 1, inner.height()), mix(fill, Qt::black, 55));
+}
+
 void apply(QWidget* root)
 {
     init();
     root->setFont(regular(12));
     root->setStyleSheet(QStringLiteral(R"(
 /* ---------- base ---------- */
-QWidget#berryRoot { background: #0B0D12; color: #F2F4F8; }
-QStackedWidget#berryPages { background: #0B0D12; }
-QWidget#berryPage { background: #0B0D12; }
-QWidget { color: #F2F4F8; }
-QLabel { background: transparent; color: #F2F4F8; }
-QLabel:disabled { color: #5C6577; }
+QWidget#berryRoot { background: #0A0D12; color: #F2F5FA; }
+QStackedWidget#berryPages { background: transparent; }
+QWidget#berryPage { background: transparent; }
+QWidget { color: #F2F5FA; }
+QLabel { background: transparent; color: #F2F5FA; }
+QLabel:disabled { color: #4C5566; }
 
-QLabel#berryDisplay { font-size: 34px; color: #F7F9FC; }
-QLabel#berryTitle { font-size: 28px; color: #F7F9FC; }
-QLabel#berryH1 { font-size: 17px; color: #F7F9FC; }
-QLabel#berryH2 { font-size: 13px; color: #F7F9FC; }
-QLabel#berryCaption { color: #8A94A6; font-size: 10px; }
-QLabel#berryMuted { color: #A9B2C3; font-size: 12px; }
-QLabel#berryDim { color: #7C8798; font-size: 11px; }
-QLabel#berryMono { color: #A9B2C3; font-size: 11px; }
+QLabel#berryDisplay { color: #F7FAFF; font-size: 38px; }
+QLabel#berryTitle { color: #F7FAFF; font-size: 26px; }
+QLabel#berryH1 { color: #F5F8FD; font-size: 16px; }
+QLabel#berryH2 { color: #F5F8FD; font-size: 12px; }
+QLabel#berryCaption { color: #7E8A9E; font-size: 10px; }
+QLabel#berryMuted { color: #A7B2C4; font-size: 12px; }
+QLabel#berryDim { color: #77839A; font-size: 11px; }
+QLabel#berryMono { color: #B9C4D6; font-size: 11px; }
 QLabel#berryAccent { color: #FF5D86; }
-QLabel#berryOk { color: #4BE39F; }
-QLabel#berryWarn { color: #F5B942; }
-QLabel#berryErr { color: #FF6E7B; }
-QLabel#berryStatus { background: #0E1219; border: 2px solid #20252F; border-left: 4px solid #2C3340; color: #A9B2C3; font-size: 11px; padding: 9px 11px; }
+QLabel#berryOk { color: #52E39C; }
+QLabel#berryWarn { color: #FFC24B; }
+QLabel#berryErr { color: #FF6B6B; }
 
-/* ---------- surfaces: a flat panel with a hard pixel shadow ---------- */
-QFrame#berryCard { background: #141821; border: 2px solid #262C38; border-right: 4px solid #07080C; border-bottom: 4px solid #07080C; }
-QFrame#berryHero { background: #141821; border: 2px solid #FF5D86; border-right: 4px solid #6E1B31; border-bottom: 4px solid #6E1B31; }
-QFrame#berryShowcase { background: #0F131B; border: 2px solid #2C2333; border-right: 4px solid #07080C; border-bottom: 4px solid #07080C; }
-QFrame#berryUpdate { background: #1B1720; border: 2px solid #FF5D86; border-right: 4px solid #6E1B31; border-bottom: 4px solid #6E1B31; }
-QFrame#berryInset { background: #0E1219; border: 2px solid #20252F; }
-QFrame#berryRule { background: #262C38; border: none; min-height: 2px; max-height: 2px; }
-QFrame#berryRuleAccent { background: #FF5D86; border: none; min-height: 2px; max-height: 2px; }
-QFrame#berryMark { background: #FF5D86; border: none; border-right: 2px solid #6E1B31; border-bottom: 2px solid #6E1B31; }
-QFrame#berryGap { background: transparent; border: none; }
+/* ---------- top bar / tabs / footer ---------- */
+QFrame#berryTopbar { background: #0C1016; border: none; border-bottom: 2px solid #1A212B; }
+QFrame#berryTopbarLine { background: #FF4F79; border: none; min-height: 2px; max-height: 2px; }
+QWidget#berryTabStrip { background: #080B0F; border-bottom: 2px solid #1A212B; }
+QFrame#berryFooter { background: #0C1016; border: none; border-top: 2px solid #1A212B; }
+QLabel#berryFooterCell { color: #8C98AC; font-size: 10px; padding: 0px 10px; }
 
-/* ---------- buttons ---------- */
-QPushButton {
-    background: #1B2029;
-    border: 2px solid #3A4354;
-    border-right: 4px solid #07080C;
-    border-bottom: 4px solid #07080C;
-    color: #F2F4F8;
-    padding: 8px 14px;
-    min-height: 18px;
-}
-QPushButton:hover { background: #232A36; border-color: #FF86A5; border-right-color: #07080C; border-bottom-color: #07080C; }
-QPushButton:pressed { background: #12161E; border: 2px solid #8E2340; padding: 10px 12px 6px 16px; }
-QPushButton:disabled { color: #5C6577; border-color: #222833; border-right-color: #07080C; border-bottom-color: #07080C; background: #10141C; }
-
-QPushButton#berryPrimary { background: #FF5D86; border-color: #FF9DB8; border-right-color: #7A1E33; border-bottom-color: #7A1E33; color: #1A0B11; }
-QPushButton#berryPrimary:hover { background: #FF86A5; border-color: #FFB3C6; border-right-color: #7A1E33; border-bottom-color: #7A1E33; }
-QPushButton#berryPrimary:pressed { background: #E24A73; border: 2px solid #B62E52; padding: 10px 12px 6px 16px; }
-QPushButton#berryPrimary:disabled { background: #2A1820; border-color: #3A2430; border-right-color: #07080C; border-bottom-color: #07080C; color: #7C5A66; }
-
-QPushButton#berryPlay {
-    background: #FF5D86;
-    border: 2px solid #FF9DB8;
-    border-right: 4px solid #7A1E33;
-    border-bottom: 4px solid #7A1E33;
-    color: #1A0B11;
-    font-size: 19px;
-    padding: 13px 22px;
-}
-QPushButton#berryPlay:hover { background: #FF86A5; border-color: #FFB3C6; }
-QPushButton#berryPlay:pressed { background: #E24A73; border: 2px solid #B62E52; padding: 15px 20px 11px 24px; }
-QPushButton#berryPlay:disabled { background: #2A1820; border-color: #3A2430; border-right-color: #07080C; border-bottom-color: #07080C; color: #7C5A66; }
-
-QPushButton#berryGhost { background: transparent; border: 2px solid transparent; color: #98A3B5; padding: 6px 8px; }
-QPushButton#berryGhost:hover { color: #FF86A5; border-color: #2C3340; background: #12161E; }
-QPushButton#berryGhost:pressed { color: #FF5D86; border-color: #B62E52; background: #12161E; padding: 6px 8px; }
-QPushButton#berryGhost:disabled { color: #4E5666; border-color: transparent; background: transparent; }
-
-QPushButton#berrySegment { background: #0F131A; border: 2px solid #2C3340; border-right: 4px solid #07080C; border-bottom: 4px solid #07080C; color: #98A3B5; padding: 5px 12px; min-height: 16px; }
-QPushButton#berrySegment:hover { color: #F2F4F8; border-color: #FF86A5; }
-QPushButton#berrySegment:checked { background: #FF5D86; border-color: #FF9DB8; border-right-color: #7A1E33; border-bottom-color: #7A1E33; color: #1A0B11; }
-
-QPushButton#berryIcon { padding: 0; min-width: 38px; max-width: 38px; min-height: 38px; max-height: 38px; }
-
-/* ---------- inputs ---------- */
+/* ---------- text inputs ---------- */
 QLineEdit, QSpinBox {
-    background: #0F131A;
-    border: 2px solid #333A48;
-    border-right: 4px solid #07080C;
-    border-bottom: 4px solid #07080C;
-    color: #F2F4F8;
-    padding: 8px 10px;
+    background: #07090D;
+    border: 2px solid #333D4E;
+    color: #F2F5FA;
+    padding: 7px 9px;
     min-height: 20px;
-    selection-background-color: #FF5D86;
-    selection-color: #1A0B11;
+    selection-background-color: #FF4F79;
+    selection-color: #14070C;
 }
-QLineEdit:focus, QSpinBox:focus { border-color: #FF5D86; border-right-color: #7A1E33; border-bottom-color: #7A1E33; }
-QLineEdit:disabled, QSpinBox:disabled { color: #5C6577; }
+QLineEdit:focus, QSpinBox:focus { border-color: #FF4F79; }
+QLineEdit:disabled, QSpinBox:disabled { color: #4C5566; border-color: #262E3C; }
 QSpinBox::up-button, QSpinBox::down-button { width: 0; height: 0; border: none; }
 QSpinBox::up-arrow, QSpinBox::down-arrow { width: 0; height: 0; }
-
-/* ---------- progress ---------- */
-QProgressBar {
-    background: #0F131A;
-    border: 2px solid #333A48;
-    min-height: 12px;
-    max-height: 12px;
-    text-align: center;
-}
-QProgressBar::chunk { background: #FF5D86; }
 
 /* ---------- scrolling ---------- */
 QScrollArea { background: transparent; border: none; }
 QScrollArea > QWidget > QWidget { background: transparent; }
-QScrollBar:vertical { background: #0B0D12; width: 12px; margin: 0; }
-QScrollBar::handle:vertical { background: #2C3340; min-height: 32px; }
-QScrollBar::handle:vertical:hover { background: #FF5D86; }
+QScrollBar:vertical { background: #07090D; width: 10px; margin: 0; }
+QScrollBar::handle:vertical { background: #2A3342; min-height: 28px; }
+QScrollBar::handle:vertical:hover { background: #FF4F79; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+QScrollBar:horizontal { background: #07090D; height: 10px; margin: 0; }
+QScrollBar::handle:horizontal { background: #2A3342; min-width: 28px; }
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: transparent; }
 
 /* ---------- lists ---------- */
-QListWidget { background: #0F131A; border: 2px solid #333A48; color: #F2F4F8; outline: none; }
-QListWidget::item { padding: 7px 9px; border-left: 3px solid transparent; border-bottom: 1px solid #1B212B; }
-QListWidget::item:hover { background: #1B2029; }
-QListWidget::item:selected { background: #241820; border-left: 3px solid #FF5D86; color: #F7F9FC; }
+QListWidget {
+    background: #07090D;
+    border: 2px solid #333D4E;
+    color: #F2F5FA;
+    outline: none;
+}
+QListWidget::item { padding: 6px 8px; border-bottom: 1px solid #141A23; }
+QListWidget::item:hover { background: #151A22; }
+QListWidget::item:selected { background: #2A1020; color: #FFD7E1; }
 
-/* ---------- checkboxes ---------- */
-QCheckBox { color: #F2F4F8; spacing: 10px; padding: 3px 0; }
-QCheckBox:disabled { color: #5C6577; }
-QCheckBox::indicator { width: 18px; height: 18px; border: 2px solid #3A4354; background: #0F131A; }
-QCheckBox::indicator:hover { border-color: #FF86A5; }
-QCheckBox::indicator:checked { background: #FF5D86; border-color: #FF9DB8; image: url(:/berry/check.png); }
-
-/* ---------- misc ---------- */
-QToolTip { background: #141821; color: #F2F4F8; border: 2px solid #FF5D86; padding: 5px 7px; }
-QMenu { background: #141821; border: 2px solid #3A4354; }
-QMenu::item:selected { background: #FF5D86; color: #1A0B11; }
-)"));
+/* ---------- tooltips and menus ---------- */
+QToolTip { background: #151A22; color: #F2F5FA; border: 2px solid #FF4F79; padding: 4px 6px; }
+QMenu { background: #151A22; border: 2px solid #333D4E; }
+QMenu::item { padding: 5px 18px; }
+QMenu::item:selected { background: #FF4F79; color: #14070C; }
+)")
+    );
 }
 
 }  // namespace berry::theme

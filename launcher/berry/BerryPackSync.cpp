@@ -36,6 +36,37 @@ namespace berry {
 namespace {
 constexpr int kMaxParallelDownloads = 4;
 constexpr int kMaxDownloadRetries = 2;
+
+/// Files Minecraft itself writes settings into. The pack ships their defaults
+/// for a fresh install only: replacing them on every sync would wipe everything
+/// the player changed in game (and did, on each launch and after each exit).
+bool isPlayerOwnedPath(const QString& path)
+{
+    const QString lower = path.toLower();
+
+    static const QStringList exact{
+        QStringLiteral("options.txt"),          QStringLiteral("optionsof.txt"),
+        QStringLiteral("optionsshaders.txt"),   QStringLiteral("servers.dat"),
+        QStringLiteral("servers.dat_old"),      QStringLiteral("keybindings.txt"),
+        QStringLiteral("usercache.json"),       QStringLiteral("usernamecache.json"),
+        QStringLiteral("realms_persistence.json"),
+    };
+    if (exact.contains(lower))
+        return true;
+
+    static const QStringList prefixes{
+        QStringLiteral("config/"),       QStringLiteral("defaultconfigs/"),
+        QStringLiteral("saves/"),        QStringLiteral("screenshots/"),
+        QStringLiteral("logs/"),         QStringLiteral("crash-reports/"),
+        QStringLiteral("local/"),        QStringLiteral("shaderpacks/"),
+        QStringLiteral("Distant_Horizons_server_data/"),
+    };
+    for (const QString& prefix : prefixes) {
+        if (lower.startsWith(prefix))
+            return true;
+    }
+    return false;
+}
 }
 
 PackSync::PackSync(QObject* parent) : QObject(parent) {}
@@ -202,6 +233,10 @@ PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Ent
             continue;
 
         const QString path = QDir(root).filePath(it.key());
+        if (isPlayerOwnedPath(it.key()) && QFileInfo::exists(path)) {
+            plan.satisfied.append(it.key());
+            continue;
+        }
         if (hashFile(path, it->hashFormat) == it->hash) {
             plan.satisfied.append(it.key());
             continue;
@@ -229,6 +264,10 @@ PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Ent
             QString error;
             if (readMetafile(localPath, it.key(), &payload, &error)) {
                 const QString payloadPath = QDir(root).filePath(payload.diskPath);
+                if (isPlayerOwnedPath(payload.diskPath) && QFileInfo::exists(payloadPath)) {
+                    plan.satisfied.append(it.key());
+                    continue;
+                }
                 if (hashFile(payloadPath, payload.hashFormat) == payload.hash) {
                     plan.satisfied.append(it.key());
                     continue;

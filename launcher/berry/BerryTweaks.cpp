@@ -355,8 +355,29 @@ void Tweaks::applyAll()
                                    QStringLiteral("notenoughanimations") })
         setEnabled({ locked }, true);
 
-    applyPacks(packsEnabled());
-    applyShaders(shadersEnabled());
+    // Resource packs and shaders are written only when the launcher toggle
+    // changes. Rewriting them on every launch also reverted the choices the
+    // player made in game, which looked like settings being reset.
+    QSettings settings(settingsPath(), QSettings::IniFormat);
+    const auto applyIfChanged = [&](const QString& key, bool value, const QString& probeFile,
+                                    const std::function<void(bool)>& apply) {
+        const QString appliedKey = QStringLiteral("tweaks/%1_applied").arg(key);
+        if (!settings.contains(appliedKey)) {
+            // Existing install: record the state, but do not touch the files.
+            if (!QFileInfo::exists(QDir(gameDir()).filePath(probeFile)))
+                apply(value);
+            settings.setValue(appliedKey, value);
+            return;
+        }
+        if (settings.value(appliedKey).toBool() != value) {
+            apply(value);
+            settings.setValue(appliedKey, value);
+        }
+    };
+    applyIfChanged(QStringLiteral("packs"), packsEnabled(), QStringLiteral("options.txt"),
+                   [](bool value) { applyPacks(value); });
+    applyIfChanged(QStringLiteral("shaders"), shadersEnabled(), QStringLiteral("config/iris.properties"),
+                   [](bool value) { applyShaders(value); });
     applyDistantHorizons();
     deleteIfEmpty(offDir());
 }
@@ -462,6 +483,12 @@ QString Tweaks::resetConfigs()
             out.commit();
         }
     }
+
+    // The configs are gone now, so the next applyAll() must rewrite the
+    // launcher-managed keys instead of assuming they are still in place.
+    QSettings settings(settingsPath(), QSettings::IniFormat);
+    settings.remove(QStringLiteral("tweaks/packs_applied"));
+    settings.remove(QStringLiteral("tweaks/shaders_applied"));
 
     return backup;
 }
