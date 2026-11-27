@@ -1206,6 +1206,8 @@ if(BERRY_SOLO)
         berry/BerryPackSync.cpp
         berry/BerryPing.h
         berry/BerryPing.cpp
+        berry/BerrySkin.h
+        berry/BerrySkin.cpp
         berry/BerryTheme.h
         berry/BerryTheme.cpp
         berry/BerryTweaks.h

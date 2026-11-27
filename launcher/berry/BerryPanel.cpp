@@ -23,10 +23,15 @@
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
+#include <QImageReader>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
+#include <QMessageBox>
+#include <QProgressDialog>
+#include <QWizard>
 #include <QMainWindow>
 #include <QMenuBar>
 #include <QNetworkAccessManager>
@@ -53,6 +58,7 @@
 #include "berry/BerryInstance.h"
 #include "berry/BerryPackSync.h"
 #include "berry/BerryPing.h"
+#include "berry/BerrySkin.h"
 #include "berry/BerryTheme.h"
 #include "berry/BerryTweaks.h"
 #include "minecraft/MinecraftInstance.h"
@@ -89,6 +95,31 @@ class OverlayFilter : public QObject {
 
    private:
     QWidget* m_overlay;
+};
+
+class PopupFilter : public QObject {
+   public:
+    PopupFilter(Panel* panel, QObject* parent) : QObject(parent), m_panel(panel) {}
+
+   protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() == QEvent::Show) {
+            if (auto* box = qobject_cast<QMessageBox*>(watched)) {
+                m_panel->notice(box->text().isEmpty() ? box->windowTitle() : box->text());
+                box->hide();
+                return true;
+            }
+            if (qobject_cast<QProgressDialog*>(watched) || qobject_cast<QWizard*>(watched)) {
+                static_cast<QWidget*>(watched)->hide();
+                return true;
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+   private:
+    Panel* m_panel;
 };
 
 QFrame* card(QWidget* parent)
@@ -220,8 +251,8 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
     m_pages = new QStackedWidget(this);
 
-    const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("НАСТРОЙКИ"), tr("ДИАГНОСТИКА"),
-                              tr("О ПРОГРАММЕ") };
+    const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("СКИНЫ"), tr("НАСТРОЙКИ"),
+                              tr("ДИАГНОСТИКА"), tr("О ПРОГРАММЕ") };
     auto* group = new QButtonGroup(this);
     group->setExclusive(true);
     for (int i = 0; i < titles.size(); ++i) {
@@ -247,6 +278,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     // ---------------------------------------------------------------- pages
     m_pages->addWidget(buildHome());
     m_pages->addWidget(buildAccount());
+    m_pages->addWidget(buildSkins());
     m_pages->addWidget(buildSettings());
     m_pages->addWidget(buildDiagnostics());
     m_pages->addWidget(buildAbout());
@@ -255,7 +287,9 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
         m_pages->setCurrentIndex(index);
         if (index == 1)
             refreshAuth();
-        if (index == 3)
+        if (index == 2)
+            refreshSkins();
+        if (index == 4)
             refreshDiagnostics();
     });
 
@@ -317,8 +351,21 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
     Tweaks::applyAll();
 
+    auto* dots = new QTimer(this);
+    dots->setInterval(320);
+    connect(dots, &QTimer::timeout, this, [this] {
+        if (m_sync && m_sync->isRunning() && !m_statusBase.isEmpty()) {
+            static const QStringList frames{ QStringLiteral(""), QStringLiteral(" ·"), QStringLiteral(" ··"),
+                                             QStringLiteral(" ···") };
+            m_status->setText(m_statusBase + frames.at(m_busyFrame % frames.size()));
+            ++m_busyFrame;
+        }
+    });
+    dots->start();
+
     refreshAuth();
     refreshLaunch();
+    refreshSkins();
     refreshDiagnostics();
     startSync();
     startPing();
@@ -565,6 +612,279 @@ QWidget* Panel::buildAccount()
     layout->addStretch(1);
 
     return page(content);
+}
+
+QWidget* Panel::buildSkins()
+{
+    auto* content = new QWidget;
+    auto* layout = new QVBoxLayout(content);
+    layout->setContentsMargins(32, 26, 32, 26);
+    layout->setSpacing(16);
+
+    layout->addWidget(pageHeader(content, tr("QUICK SKIN"), tr("Скины"),
+                                 tr("Скин ставится прямо в библиотеку Quick Skin — в игре он появится сразу.")));
+
+    auto* columns = new QHBoxLayout;
+    columns->setSpacing(16);
+
+    auto* previewCard = card(content);
+    auto* previewLayout = new QVBoxLayout(previewCard);
+    previewLayout->setContentsMargins(20, 18, 20, 18);
+    previewLayout->setSpacing(10);
+    previewLayout->addWidget(caption(tr("ПРЕДПРОСМОТР"), previewCard));
+    m_skinPreview = new QLabel(previewCard);
+    m_skinPreview->setAlignment(Qt::AlignCenter);
+    m_skinPreview->setMinimumSize(250, 300);
+    m_skinPreview->setStyleSheet(QStringLiteral("background:#0E1219; border:2px solid #20252F;"));
+    previewLayout->addWidget(m_skinPreview, 1);
+    m_skinName = new QLabel(tr("Скин не выбран"), previewCard);
+    m_skinName->setObjectName(QStringLiteral("berryDim"));
+    m_skinName->setWordWrap(true);
+    previewLayout->addWidget(m_skinName);
+
+    auto* models = new QHBoxLayout;
+    models->setSpacing(6);
+    models->addWidget(caption(tr("МОДЕЛЬ"), previewCard));
+    auto* modelGroup = new QButtonGroup(previewCard);
+    modelGroup->setExclusive(true);
+    const auto addModel = [&](const QString& text, const QString& value) {
+        auto* b = button(text, previewCard, QStringLiteral("berrySegment"));
+        b->setCheckable(true);
+        modelGroup->addButton(b);
+        connect(b, &QPushButton::clicked, this, [this, value] {
+            Skins::setModel(value);
+            refreshSkins();
+        });
+        models->addWidget(b);
+        return b;
+    };
+    m_modelAuto = addModel(QStringLiteral("AUTO"), QStringLiteral("auto"));
+    m_modelClassic = addModel(QStringLiteral("CLASSIC"), QStringLiteral("classic"));
+    m_modelSlim = addModel(QStringLiteral("SLIM"), QStringLiteral("slim"));
+    models->addStretch(1);
+    previewLayout->addLayout(models);
+    columns->addWidget(previewCard, 3);
+
+    auto* right = new QVBoxLayout;
+    right->setSpacing(16);
+
+    auto* skinCard = card(content);
+    auto* skinLayout = new QVBoxLayout(skinCard);
+    skinLayout->setContentsMargins(20, 18, 20, 18);
+    skinLayout->setSpacing(8);
+    skinLayout->addWidget(caption(tr("СКИНЫ В БИБЛИОТЕКЕ"), skinCard));
+    m_skinList = new QListWidget(skinCard);
+    m_skinList->setMinimumHeight(150);
+    m_skinList->setSelectionMode(QAbstractItemView::SingleSelection);
+    skinLayout->addWidget(m_skinList, 1);
+    auto* skinButtons = new QHBoxLayout;
+    skinButtons->setSpacing(8);
+    auto* pickSkin = button(tr("Выбрать PNG/GIF"), skinCard);
+    connect(pickSkin, &QPushButton::clicked, this, &Panel::pickSkin);
+    auto* applySkin = button(tr("Применить"), skinCard, QStringLiteral("berryPrimary"));
+    connect(applySkin, &QPushButton::clicked, this, &Panel::applySelectedSkin);
+    skinButtons->addWidget(pickSkin);
+    skinButtons->addWidget(applySkin);
+    skinButtons->addStretch(1);
+    skinLayout->addLayout(skinButtons);
+    right->addWidget(skinCard, 1);
+
+    auto* capeCard = card(content);
+    auto* capeLayout = new QVBoxLayout(capeCard);
+    capeLayout->setContentsMargins(20, 18, 20, 18);
+    capeLayout->setSpacing(8);
+    capeLayout->addWidget(caption(tr("ПЛАЩ"), capeCard));
+    m_capeList = new QListWidget(capeCard);
+    m_capeList->setMinimumHeight(90);
+    m_capeList->setSelectionMode(QAbstractItemView::SingleSelection);
+    capeLayout->addWidget(m_capeList);
+    m_capeName = new QLabel(tr("Плащ выключен"), capeCard);
+    m_capeName->setObjectName(QStringLiteral("berryDim"));
+    capeLayout->addWidget(m_capeName);
+    m_skinStatus = new QLabel(tr("Quick Skin проверяется…"), capeCard);
+    m_skinStatus->setObjectName(QStringLiteral("berryDim"));
+    m_skinStatus->setWordWrap(true);
+    capeLayout->addWidget(m_skinStatus);
+
+    auto* capeButtons = new QHBoxLayout;
+    capeButtons->setSpacing(8);
+    auto* pickCape = button(tr("Выбрать плащ"), capeCard);
+    connect(pickCape, &QPushButton::clicked, this, &Panel::pickCape);
+    auto* applyCape = button(tr("Включить"), capeCard, QStringLiteral("berryPrimary"));
+    connect(applyCape, &QPushButton::clicked, this, [this] {
+        auto* item = m_capeList ? m_capeList->currentItem() : nullptr;
+        if (!item) {
+            m_skinStatus->setText(tr("Выбери плащ в списке."));
+            return;
+        }
+        QString error;
+        if (!Skins::activateCape(item->data(Qt::UserRole).toString(), &error)) {
+            m_skinStatus->setText(error);
+            m_skinStatus->setStyleSheet(QStringLiteral("color:#FF6E7B;"));
+            return;
+        }
+        m_skinStatus->setText(tr("Плащ включён: %1").arg(item->text().mid(2)));
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+        refreshSkins();
+    });
+    auto* clearCape = button(tr("Убрать плащ"), capeCard, QStringLiteral("berryGhost"));
+    connect(clearCape, &QPushButton::clicked, this, [this] {
+        Skins::clearCape();
+        m_skinStatus->setText(tr("Плащ выключен."));
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+        refreshSkins();
+    });
+    capeButtons->addWidget(pickCape);
+    capeButtons->addWidget(applyCape);
+    capeButtons->addWidget(clearCape);
+    capeButtons->addStretch(1);
+    capeLayout->addLayout(capeButtons);
+    right->addWidget(capeCard);
+    right->addStretch(1);
+    columns->addLayout(right, 2);
+
+    layout->addLayout(columns);
+    layout->addStretch(1);
+
+    connect(m_skinList, &QListWidget::itemSelectionChanged, this, [this] {
+        if (auto* item = m_skinList->currentItem())
+            refreshSkinPreview(item->data(Qt::UserRole).toString());
+    });
+
+    return page(content);
+}
+
+QString Panel::modelValue() const
+{
+    return Skins::model();
+}
+
+void Panel::refreshSkins()
+{
+    if (!m_skinList || !m_capeList)
+        return;
+
+    const QString available = Skins::availability();
+    if (!available.isEmpty()) {
+        m_skinStatus->setText(available);
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#F5B942;"));
+    }
+
+    const QString model = modelValue();
+    m_modelAuto->setChecked(model == QLatin1String("auto"));
+    m_modelClassic->setChecked(model == QLatin1String("classic"));
+    m_modelSlim->setChecked(model == QLatin1String("slim"));
+
+    m_skinList->clear();
+    for (const auto& entry : Skins::entries(false)) {
+        auto* item = new QListWidgetItem((entry.active ? QStringLiteral("● ") : QStringLiteral("   ")) + entry.name, m_skinList);
+        item->setData(Qt::UserRole, entry.path);
+        item->setToolTip(entry.size + QLatin1Char('\n') + entry.path);
+    }
+
+    m_capeList->clear();
+    for (const auto& entry : Skins::entries(true)) {
+        auto* item = new QListWidgetItem((entry.active ? QStringLiteral("● ") : QStringLiteral("   ")) + entry.name, m_capeList);
+        item->setData(Qt::UserRole, entry.path);
+        item->setToolTip(entry.size + QLatin1Char('\n') + entry.path);
+    }
+
+    const QString current = Skins::currentSkin();
+    refreshSkinPreview(current);
+    m_skinName->setText(current.isEmpty() ? tr("Скин не выбран") : tr("Активен: %1").arg(QFileInfo(current).fileName()));
+
+    const QString cape = Skins::currentCape();
+    m_capeName->setText(cape.isEmpty() ? tr("Плащ выключен") : tr("Активен: %1").arg(QFileInfo(cape).fileName()));
+
+    if (available.isEmpty()) {
+        m_skinStatus->setText(tr("Quick Skin готов: изменения видны игре без перезапуска лаунчера."));
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+    }
+}
+
+void Panel::refreshSkinPreview(const QString& path)
+{
+    if (!m_skinPreview)
+        return;
+    QImageReader reader(path);
+    const QImage image = reader.read();
+    if (image.isNull()) {
+        m_skinPreview->setPixmap(QPixmap());
+        m_skinPreview->setText(tr("НЕТ СКИНА"));
+        return;
+    }
+    const bool slim = modelValue() == QLatin1String("slim") ||
+                      (modelValue() == QLatin1String("auto") && Skins::detectSlim(image));
+    m_skinPreview->setText(QString());
+    m_skinPreview->setPixmap(QPixmap::fromImage(Skins::preview(image, slim, 3))
+                                 .scaled(230, 280, Qt::KeepAspectRatio, Qt::FastTransformation));
+}
+
+void Panel::pickSkin()
+{
+    const QString file = QFileDialog::getOpenFileName(this, tr("Скин для Quick Skin"), QString(),
+                                                      tr("Изображения (*.png *.gif)"));
+    if (file.isEmpty())
+        return;
+
+    const QString nick = m_auth->tokenNick().isEmpty() ? m_auth->nick() : m_auth->tokenNick();
+    QString error;
+    if (!Skins::applySkin(file, nick, modelValue(), &error)) {
+        m_skinStatus->setText(error);
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#FF6E7B;"));
+        return;
+    }
+    m_pickedSkin = file;
+    m_skinStatus->setText(tr("Скин установлен: %1").arg(QFileInfo(file).fileName()));
+    m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+    refreshSkins();
+}
+
+void Panel::applySelectedSkin()
+{
+    auto* item = m_skinList ? m_skinList->currentItem() : nullptr;
+    if (!item) {
+        m_skinStatus->setText(tr("Выбери скин в списке или нажми «Выбрать PNG/GIF»."));
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#F5B942;"));
+        return;
+    }
+
+    const QString nick = m_auth->tokenNick().isEmpty() ? m_auth->nick() : m_auth->tokenNick();
+    QString error;
+    if (!Skins::activateSkin(item->data(Qt::UserRole).toString(), nick, modelValue(), &error)) {
+        m_skinStatus->setText(error);
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#FF6E7B;"));
+        return;
+    }
+    m_skinStatus->setText(tr("Скин включён: %1").arg(item->text().mid(2)));
+    m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+    refreshSkins();
+}
+
+void Panel::pickCape()
+{
+    const QString file = QFileDialog::getOpenFileName(this, tr("Плащ для Quick Skin"), QString(),
+                                                      tr("Изображения (*.png *.gif)"));
+    if (file.isEmpty())
+        return;
+    QString error;
+    if (!Skins::applyCape(file, &error)) {
+        m_skinStatus->setText(error);
+        m_skinStatus->setStyleSheet(QStringLiteral("color:#FF6E7B;"));
+        return;
+    }
+    m_skinStatus->setText(tr("Плащ установлен: %1").arg(QFileInfo(file).fileName()));
+    m_skinStatus->setStyleSheet(QStringLiteral("color:#4BE39F;"));
+    refreshSkins();
+}
+
+void Panel::notice(const QString& text)
+{
+    if (text.isEmpty() || !m_status)
+        return;
+    m_statusBase = text;
+    m_status->setText(text);
+    m_status->setStyleSheet(QStringLiteral("color:#F5B942;"));
 }
 
 QWidget* Panel::buildSettings()
@@ -996,7 +1316,8 @@ void Panel::startSync()
         connect(m_sync, &PackSync::progress, this, [this](int done, int total, const QString& file) {
             m_progress->setMaximum(total);
             m_progress->setValue(done);
-            m_status->setText(tr("Обновление: %1 (%2/%3)").arg(QFileInfo(file).fileName()).arg(done).arg(total));
+            m_statusBase = tr("Обновление: %1 (%2/%3)").arg(QFileInfo(file).fileName()).arg(done).arg(total);
+            m_status->setText(m_statusBase);
         });
         connect(m_sync, &PackSync::finished, this, [this](bool ok, const QString& error) {
             m_progress->hide();
@@ -1014,7 +1335,8 @@ void Panel::startSync()
     m_progress->setValue(0);
     m_progress->show();
     m_retry->hide();
-    m_status->setText(tr("Проверка файлов сборки…"));
+    m_statusBase = tr("Проверка файлов сборки…");
+    m_status->setText(m_statusBase);
     m_sync->start();
 }
 
@@ -1152,6 +1474,7 @@ void installSoloUi(QMainWindow* window)
     panel->raise();
 
     window->installEventFilter(new OverlayFilter(panel, window));
+    qApp->installEventFilter(new PopupFilter(panel, qApp));
     window->setMinimumSize(1000, 700);
     window->resize(1240, 800);
 }

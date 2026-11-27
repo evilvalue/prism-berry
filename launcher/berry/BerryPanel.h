@@ -15,6 +15,7 @@
 class QCheckBox;
 class QLabel;
 class QLineEdit;
+class QListWidget;
 class QMainWindow;
 class QProgressBar;
 class QPushButton;
@@ -37,9 +38,13 @@ class Panel : public QWidget {
    public:
     explicit Panel(QWidget* parent = nullptr);
 
+    /// Shows a short message in the panel instead of opening a Prism dialog.
+    void notice(const QString& text);
+
    private:
     QWidget* buildHome();
     QWidget* buildAccount();
+    QWidget* buildSkins();
     QWidget* buildSettings();
     QWidget* buildDiagnostics();
     QWidget* buildAbout();
@@ -58,6 +63,13 @@ class Panel : public QWidget {
     void checkUpdates();
     bool signedIn() const;
 
+    void refreshSkins();
+    void pickSkin();
+    void pickCape();
+    void applySelectedSkin();
+    void refreshSkinPreview(const QString& path);
+    QString modelValue() const;
+
     MinecraftInstance* m_instance = nullptr;
     PackSync* m_sync = nullptr;
     TelegramAuth* m_auth = nullptr;
@@ -66,6 +78,8 @@ class Panel : public QWidget {
     QStackedWidget* m_pages = nullptr;
     bool m_syncFinished = false;
     bool m_loading = false;
+    QString m_statusBase;
+    int m_busyFrame = 0;
 
     QLabel* m_chip = nullptr;
     QLabel* m_motd = nullptr;
@@ -89,6 +103,17 @@ class Panel : public QWidget {
     QCheckBox* m_packs = nullptr;
     QCheckBox* m_shaders = nullptr;
     QVector<QCheckBox*> m_modChecks;
+
+    QLabel* m_skinPreview = nullptr;
+    QLabel* m_skinName = nullptr;
+    QLabel* m_skinStatus = nullptr;
+    QLabel* m_capeName = nullptr;
+    QListWidget* m_skinList = nullptr;
+    QListWidget* m_capeList = nullptr;
+    QPushButton* m_modelAuto = nullptr;
+    QPushButton* m_modelClassic = nullptr;
+    QPushButton* m_modelSlim = nullptr;
+    QString m_pickedSkin;
 
     QVector<QLabel*> m_diagValues;
     QLabel* m_aboutStatus = nullptr;

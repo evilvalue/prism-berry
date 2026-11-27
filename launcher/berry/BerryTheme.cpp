@@ -128,6 +128,10 @@ QPushButton#berryPlay:disabled { background: #37222C; border-color: #2A1922; col
 QPushButton#berryGhost { background: transparent; border-color: transparent; color: #98A3B5; }
 QPushButton#berryGhost:hover { color: #FF5D86; border-color: transparent; background: transparent; }
 
+QPushButton#berrySegment { background: #12161E; border-color: #2C3340; color: #98A3B5; padding: 6px 12px; }
+QPushButton#berrySegment:hover { color: #E9EDF5; border-color: #FF5D86; }
+QPushButton#berrySegment:checked { background: #FF5D86; border-color: #C43A5E; color: #180A0F; }
+
 QPushButton#berryNav {
     background: transparent;
     border: none;
@@ -172,6 +176,12 @@ QScrollBar::handle:vertical { background: #2C3340; min-height: 28px; }
 QScrollBar::handle:vertical:hover { background: #FF5D86; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; }
+
+/* ---------- lists ---------- */
+QListWidget { background: #0F131A; border: 2px solid #333A48; color: #E9EDF5; outline: none; }
+QListWidget::item { padding: 7px 9px; border-bottom: 1px solid #1B212B; }
+QListWidget::item:hover { background: #1B2029; }
+QListWidget::item:selected { background: #FF5D86; color: #180A0F; }
 
 /* ---------- checkboxes ---------- */
 QCheckBox { color: #E9EDF5; spacing: 10px; padding: 3px 0; }
