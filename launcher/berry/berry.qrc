@@ -1,8 +1,7 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
     <qresource prefix="/berry">
-        <file alias="Monocraft.ttf">resources/Monocraft.ttf</file>
-        <file alias="Monocraft-SemiBold.ttf">resources/Monocraft-SemiBold.ttf</file>
+        <file alias="MinecraftRus.ttf">resources/MinecraftRus.ttf</file>
         <file alias="DistantHorizons.toml">resources/DistantHorizons.toml</file>
         <file alias="berry.png">resources/berry.png</file>
         <file alias="check.png">resources/check.png</file>

@@ -29,7 +29,7 @@ Prism Launcher, PolyMC и MultiMC распространяются по GPL v3; 
 
 Под опцией сборки `BERRY_SOLO=ON` добавлено:
 
-- пиксельный интерфейс BerryTrip (палитра, шрифт Monocraft, пять экранов) поверх `MainWindow`;
+- пиксельный интерфейс BerryTrip (палитра, шрифт Minecraft Rus (© 2004–2012 BOGDAN Software), пять экранов) поверх `MainWindow`;
 - вход только через Telegram-бота (JWT-токен в `config/berryauth-token.json`), оффлайн-аккаунт Prism;
 - автосоздание и автообновление единственного инстанса BerryTrip из HTTPS-манифеста с SHA-256/SHA-512;
 - управление необязательными модами, ресурспаками, шейдерами, памятью и Java;

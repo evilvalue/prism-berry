@@ -34,8 +34,8 @@ void init()
     if (!g_family.isEmpty())
         return;
 
-    g_family = registerFont(QStringLiteral(":/berry/Monocraft.ttf"));
-    g_familySemi = registerFont(QStringLiteral(":/berry/Monocraft-SemiBold.ttf"));
+    g_family = registerFont(QStringLiteral(":/berry/MinecraftRus.ttf"));
+    g_familySemi = g_family;
     if (g_family.isEmpty())
         g_family = QStringLiteral("Consolas");
     if (g_familySemi.isEmpty())

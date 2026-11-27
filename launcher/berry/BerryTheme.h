@@ -18,7 +18,7 @@ class QWidget;
 namespace berry {
 
 /// BerryUp's pixel palette and stylesheet: hard corners, two pixel borders,
-/// flat colours and the Monocraft font.
+/// flat colours and the bundled Minecraft Rus pixel font.
 namespace theme {
 
 inline const QColor Bg{ 0x0E, 0x10, 0x15 };
@@ -45,7 +45,7 @@ inline const QColor Err{ 0xFF, 0x6E, 0x7B };
 inline const QColor Telegram{ 0x38, 0xAE, 0xE0 };
 inline const QColor OnAccent{ 0x1A, 0x0B, 0x11 };
 
-/// Registers the bundled Monocraft fonts; safe to call more than once.
+/// Registers the bundled Minecraft Rus font; safe to call more than once.
 void init();
 
 QString family();
