@@ -2,6 +2,7 @@
 ; Build: makensis /DAPP_VERSION=0.3.0 berrytrip.nsi
 Unicode true
 !include "MUI2.nsh"
+!include "LogicLib.nsh"
 
 !ifndef APP_VERSION
   !define APP_VERSION "0.0.0"
@@ -46,6 +47,12 @@ VIAddVersionKey "LegalCopyright" "GPL-3.0; based on Prism Launcher"
 Section "BerryTrip" SEC01
   SetShellVarContext current
   SetOutPath "$INSTDIR"
+  ; The silent self-update runs while an old launcher window may still hold
+  ; berrytrip.exe; NSIS would otherwise fail to replace the locked file.
+  ${If} ${Silent}
+    nsExec::Exec 'taskkill /F /IM berrytrip.exe'
+    Sleep 2000
+  ${EndIf}
   File /r "..\dist\*"
   File "..\LICENSE"
   File "..\NOTICE.md"

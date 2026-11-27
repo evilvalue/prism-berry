@@ -53,6 +53,7 @@ class PackSync : public QObject {
         QUrl url;
         QString hashFormat;
         QByteArray hash;
+        int retries = 0;
     };
 
     /// Off-thread result of hashing the local game folder and planning downloads.
@@ -89,6 +90,7 @@ class PackSync : public QObject {
     void startDownload(const Job& job);
     void onReplyFinished(QNetworkReply* reply, const Job& job, QSaveFile* file, QCryptographicHash* hasher);
     void onMetafileInstalled(const Job& job, const QString& localPath);
+    void retryLater(const Job& job);
     void completeEntry(const QString& entryPath);
     void maybeFinish();
     void fail(const QString& message);
@@ -108,6 +110,7 @@ class PackSync : public QObject {
     int m_completed = 0;
     int m_inFlight = 0;
     int m_pendingMetafiles = 0;
+    int m_pendingRetries = 0;
     bool m_running = false;
 };
 

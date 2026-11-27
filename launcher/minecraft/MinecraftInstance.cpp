@@ -1190,10 +1190,12 @@ LaunchTask* MinecraftInstance::createLaunchTask(AuthSessionPtr session, Minecraf
         process->appendStep(step);
     }
 
-    // load meta
+    // Load meta. Content downloads (metadata, libraries, assets) are plain
+    // HTTP files and never required a Microsoft account; only the auth claim
+    // does. So offline players still get the instance downloaded (like
+    // PineconeMC) instead of failing on missing libraries.
     {
-        auto mode = session->launchMode != LaunchMode::Offline ? Net::Mode::Online : Net::Mode::Offline;
-        process->appendStep(makeShared<TaskStepWrapper>(pptr, makeShared<MinecraftLoadAndCheck>(this, mode)));
+        process->appendStep(makeShared<TaskStepWrapper>(pptr, makeShared<MinecraftLoadAndCheck>(this, Net::Mode::Online)));
     }
 
     // check java
@@ -1211,13 +1213,15 @@ LaunchTask* MinecraftInstance::createLaunchTask(AuthSessionPtr session, Minecraf
         process->appendStep(step);
     }
 
-    // if we aren't in offline mode
+    // Download libraries and assets in every mode (there is more below).
     if (session->launchMode != LaunchMode::Offline) {
         process->appendStep(makeShared<ClaimAccount>(pptr, session));
-        for (auto t : createUpdateTask()) {
-            process->appendStep(makeShared<TaskStepWrapper>(pptr, t));
-        }
-    } else {
+    }
+    for (auto t : createUpdateTask()) {
+        process->appendStep(makeShared<TaskStepWrapper>(pptr, t));
+    }
+    if (session->launchMode == LaunchMode::Offline) {
+        // After the download above this only fails if the network is gone.
         process->appendStep(makeShared<EnsureOfflineLibraries>(pptr, this));
     }
 

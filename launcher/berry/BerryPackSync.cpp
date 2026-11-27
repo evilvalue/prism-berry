@@ -18,6 +18,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSaveFile>
+#include <QTimer>
 #include <QtConcurrent>
 
 #include <toml++/toml.h>
@@ -34,6 +35,7 @@ namespace berry {
 
 namespace {
 constexpr int kMaxParallelDownloads = 4;
+constexpr int kMaxDownloadRetries = 2;
 }
 
 PackSync::PackSync(QObject* parent) : QObject(parent) {}
@@ -58,6 +60,7 @@ void PackSync::start()
     m_completed = 0;
     m_inFlight = 0;
     m_pendingMetafiles = 0;
+    m_pendingRetries = 0;
     m_running = true;
 
     fetchIndex();
@@ -70,6 +73,7 @@ void PackSync::abort()
 
     m_running = false;
     m_queue.clear();
+    m_pendingRetries = 0;
     const auto replies = m_replies;
     m_replies.clear();
     for (auto* reply : replies)
@@ -331,6 +335,15 @@ void PackSync::onReplyFinished(QNetworkReply* reply, const Job& job, QSaveFile* 
 
     if (!error.isEmpty()) {
         fail(QStringLiteral("%1: %2").arg(job.diskPath, error));
+        if (job.retries < kMaxDownloadRetries) {
+            // One dropped connection or a file briefly locked by antivirus
+            // must not fail the whole pack update for the player.
+            m_errors.removeLast();
+            retryLater(job);
+            startNextDownloads();
+            maybeFinish();
+            return;
+        }
         completeEntry(job.entryPath);
         startNextDownloads();
         maybeFinish();
@@ -406,9 +419,27 @@ void PackSync::completeEntry(const QString& entryPath)
     emit progress(m_completed, m_total, entryPath);
 }
 
+void PackSync::retryLater(const Job& job)
+{
+    Job retry = job;
+    ++retry.retries;
+    ++m_pendingRetries;
+    m_queuedPaths.remove(job.diskPath);
+
+    QTimer::singleShot(1500, this, [this, retry] {
+        if (m_pendingRetries > 0)
+            --m_pendingRetries;
+        if (!m_running)
+            return;
+        enqueue(retry);
+        startNextDownloads();
+        maybeFinish();
+    });
+}
+
 void PackSync::maybeFinish()
 {
-    if (!m_running || !m_queue.isEmpty() || m_inFlight > 0 || m_pendingMetafiles > 0)
+    if (!m_running || !m_queue.isEmpty() || m_inFlight > 0 || m_pendingMetafiles > 0 || m_pendingRetries > 0)
         return;
 
     m_running = false;

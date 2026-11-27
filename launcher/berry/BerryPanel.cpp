@@ -857,8 +857,13 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
     connect(m_instance, &BaseInstance::runningStatusChanged, this, [this] {
         refreshLaunch();
-        if (!m_instance->isRunning())
+        if (!m_instance->isRunning()) {
+            // The game holds mod jars and configs open; the update could not
+            // write them while it was running.
+            if (!m_syncFinished)
+                startSync();
             tryAutoInstall();
+        }
     });
 
     m_pollTimer = new QTimer(this);
@@ -2133,6 +2138,11 @@ void Panel::startSync()
     if (!m_instance || (m_sync && m_sync->isRunning()))
         return;
 
+    if (m_instance->isRunning()) {
+        m_status->setText(tr("Сборка обновится после закрытия Minecraft."));
+        return;
+    }
+
     m_syncFinished = false;
     refreshLaunch();
 
@@ -2148,7 +2158,8 @@ void Panel::startSync()
             m_progress->hide();
             m_retry->setVisible(!ok);
             if (!ok) {
-                m_syncFinished = true;
+                // Never let the player start the game on a half-updated pack.
+                m_syncFinished = false;
                 m_status->setText(tr("Не удалось обновить: %1").arg(error));
                 refreshLaunch();
                 refreshDiagnostics();
@@ -2166,6 +2177,8 @@ void Panel::startSync()
                 refreshLaunch();
                 refreshDiagnostics();
                 refreshSkins();
+                if (m_autoInstallPending && m_updateReady)
+                    tryAutoInstall();
             });
             apply->setFuture(QtConcurrent::run([] { Tweaks::applyAll(); }));
         });
@@ -2272,6 +2285,9 @@ void Panel::installUpdate()
             return;
         }
         m_autoInstallPending = false;
+        // Stop writing pack files before the installer replaces the launcher.
+        if (m_sync && m_sync->isRunning())
+            m_sync->abort();
         QString error;
         if (!m_updater->install(&error)) {
             if (m_updateText)

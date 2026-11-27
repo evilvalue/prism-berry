@@ -21,6 +21,7 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QProcess>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QVersionNumber>
@@ -281,11 +282,49 @@ bool Updater::install(QString* error)
         return false;
     }
 
+    // The installer cannot overwrite berrytrip.exe while the launcher still
+    // holds it. The helper waits for this exact process to exit, kills any
+    // leftover launcher window that keeps the exe locked, runs the silent
+    // installer (retrying once) and only then starts the freshly installed
+    // build.
+    QString installDir = QSettings(QStringLiteral("HKEY_CURRENT_USER\\Software\\BerryTrip"), QSettings::NativeFormat)
+                             .value(QStringLiteral("InstallDir"))
+                             .toString();
+    if (installDir.isEmpty())
+        installDir = QCoreApplication::applicationDirPath();
+
+    const QString installer = QDir::toNativeSeparators(m_installerPath);
+    const QString installedExe = QDir::toNativeSeparators(QDir(installDir).filePath(QStringLiteral("berrytrip.exe")));
+    const QString fallbackExe = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+
     QTextStream out(&script);
     out << "@echo off\r\n";
+    out << "setlocal\r\n";
+    out << "set \"BERRY_PID=" << QCoreApplication::applicationPid() << "\"\r\n";
+    out << "set \"BERRY_INSTALLER=" << installer << "\"\r\n";
+    out << "set \"BERRY_EXE=" << installedExe << "\"\r\n";
+    out << "set \"BERRY_OLD=" << fallbackExe << "\"\r\n";
+    out << "for /l %%i in (1,1,60) do (\r\n";
+    out << "  tasklist /FI \"PID eq %BERRY_PID%\" /NH 2>nul | find \"%BERRY_PID%\" >nul || goto closed\r\n";
+    out << "  timeout /t 1 /nobreak >nul\r\n";
+    out << ")\r\n";
+    out << ":closed\r\n";
+    out << "taskkill /F /PID %BERRY_PID% >nul 2>&1\r\n";
+    out << "taskkill /F /IM berrytrip.exe >nul 2>&1\r\n";
     out << "timeout /t 2 /nobreak >nul\r\n";
-    out << "start \"\" /wait \"" << QDir::toNativeSeparators(m_installerPath) << "\" /S\r\n";
-    out << "start \"\" \"" << QDir::toNativeSeparators(QCoreApplication::applicationFilePath()) << "\"\r\n";
+    out << "\"%BERRY_INSTALLER%\" /S\r\n";
+    out << "if errorlevel 1 (\r\n";
+    out << "  timeout /t 3 /nobreak >nul\r\n";
+    out << "  taskkill /F /IM berrytrip.exe >nul 2>&1\r\n";
+    out << "  \"%BERRY_INSTALLER%\" /S\r\n";
+    out << ")\r\n";
+    out << "timeout /t 1 /nobreak >nul\r\n";
+    out << "if exist \"%BERRY_EXE%\" (\r\n";
+    out << "  start \"\" \"%BERRY_EXE%\"\r\n";
+    out << ") else (\r\n";
+    out << "  start \"\" \"%BERRY_OLD%\"\r\n";
+    out << ")\r\n";
+    out << "del \"%~f0\"\r\n";
     script.close();
 
     if (!QProcess::startDetached(QStringLiteral("cmd.exe"),
