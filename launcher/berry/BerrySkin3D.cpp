@@ -417,9 +417,11 @@ void Skin3D::hideEvent(QHideEvent* event)
 
 void Skin3D::mousePressEvent(QMouseEvent* event)
 {
-    if (event->button() != Qt::LeftButton)
+    if (event->button() != Qt::LeftButton && event->button() != Qt::RightButton)
         return;
+    event->accept();
     m_dragging = true;
+    m_targetYaw = m_yaw;
     m_drag = event->position();
     setCursor(Qt::ClosedHandCursor);
 }
@@ -428,15 +430,24 @@ void Skin3D::mouseMoveEvent(QMouseEvent* event)
 {
     if (!m_dragging)
         return;
+    event->accept();
     const QPointF position = event->position();
     m_targetYaw += (position.x() - m_drag.x()) * 0.55;
+    while (m_targetYaw > 180.0)
+        m_targetYaw -= 360.0;
+    while (m_targetYaw < -180.0)
+        m_targetYaw += 360.0;
+    // Вращение должно следовать за мышью сразу, а не после отпускания кнопки.
+    m_yaw = m_targetYaw;
     m_drag = position;
     update();
 }
 
 void Skin3D::mouseReleaseEvent(QMouseEvent* event)
 {
-    Q_UNUSED(event);
+    if (event->button() != Qt::LeftButton && event->button() != Qt::RightButton)
+        return;
+    event->accept();
     m_dragging = false;
     setCursor(Qt::OpenHandCursor);
 }
