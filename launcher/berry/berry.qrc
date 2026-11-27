@@ -5,5 +5,7 @@
         <file alias="Monocraft-SemiBold.ttf">resources/Monocraft-SemiBold.ttf</file>
         <file alias="DistantHorizons.toml">resources/DistantHorizons.toml</file>
         <file alias="berry.png">resources/berry.png</file>
+        <file alias="check.png">resources/check.png</file>
+        <file alias="pattern.png">resources/pattern.png</file>
     </qresource>
 </RCC>

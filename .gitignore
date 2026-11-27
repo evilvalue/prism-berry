@@ -70,3 +70,4 @@ flatbuild
 
 # Local code signing material (never commit private keys)
 /packaging/codesign/
+.vtkey

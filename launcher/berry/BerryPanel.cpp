@@ -19,6 +19,7 @@
 #include <QEvent>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFont>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -31,6 +32,7 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
@@ -100,16 +102,62 @@ QLabel* caption(const QString& text, QWidget* parent)
 {
     auto* label = new QLabel(text, parent);
     label->setObjectName(QStringLiteral("berryCaption"));
+    QFont font = theme::regular(10);
+    font.setLetterSpacing(QFont::AbsoluteSpacing, 1.2);
+    label->setFont(font);
     return label;
+}
+
+QLabel* sectionLabel(const QString& text, QWidget* parent)
+{
+    auto* label = new QLabel(text, parent);
+    label->setObjectName(QStringLiteral("berryH2"));
+    return label;
+}
+
+QFrame* rule(QWidget* parent)
+{
+    auto* line = new QFrame(parent);
+    line->setObjectName(QStringLiteral("berryRule"));
+    line->setFixedHeight(2);
+    return line;
 }
 
 QPushButton* button(const QString& text, QWidget* parent, const QString& objectName = QString())
 {
     auto* b = new QPushButton(text, parent);
     b->setAutoDefault(false);
+    b->setCursor(Qt::PointingHandCursor);
     if (!objectName.isEmpty())
         b->setObjectName(objectName);
     return b;
+}
+
+QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& title, const QString& subtitle)
+{
+    auto* wrap = new QWidget(parent);
+    auto* box = new QVBoxLayout(wrap);
+    box->setContentsMargins(0, 0, 0, 2);
+    box->setSpacing(5);
+    box->addWidget(caption(eyebrow, wrap));
+
+    auto* heading = new QLabel(title, wrap);
+    heading->setObjectName(QStringLiteral("berryTitle"));
+    QFont font = theme::semiBold(26);
+    font.setLetterSpacing(QFont::AbsoluteSpacing, 0.5);
+    heading->setFont(font);
+    box->addWidget(heading);
+
+    if (!subtitle.isEmpty()) {
+        auto* sub = new QLabel(subtitle, wrap);
+        sub->setObjectName(QStringLiteral("berryMuted"));
+        sub->setWordWrap(true);
+        box->addWidget(sub);
+    }
+
+    box->addSpacing(8);
+    box->addWidget(rule(wrap));
+    return wrap;
 }
 
 int totalRamGb()
@@ -145,32 +193,43 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     // ---------------------------------------------------------------- sidebar
     auto* side = new QWidget(this);
     side->setObjectName(QStringLiteral("berrySide"));
-    side->setFixedWidth(228);
-    side->setStyleSheet(QStringLiteral("#berrySide { background: #12151B; border-right: 2px solid #282E3A; }"));
+    side->setFixedWidth(238);
+    side->setStyleSheet(
+        QStringLiteral("#berrySide { background: #0B0D12; background-image: url(:/berry/pattern.png); "
+                       "border-right: 2px solid #1C222D; }"));
     auto* sideLayout = new QVBoxLayout(side);
-    sideLayout->setContentsMargins(18, 22, 18, 18);
-    sideLayout->setSpacing(6);
+    sideLayout->setContentsMargins(16, 22, 16, 16);
+    sideLayout->setSpacing(4);
 
     auto* logo = new QLabel(side);
     logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(56, 56, Qt::KeepAspectRatio, Qt::FastTransformation));
+                        .scaled(54, 54, Qt::KeepAspectRatio, Qt::FastTransformation));
     sideLayout->addWidget(logo);
 
-    auto* name = new QLabel(QStringLiteral("BerryTrip"), side);
-    name->setObjectName(QStringLiteral("berryH1"));
-    sideLayout->addWidget(name);
+    auto* wordmark = new QLabel(QStringLiteral("BERRYTRIP"), side);
+    wordmark->setObjectName(QStringLiteral("berryH1"));
+    QFont wordFont = theme::semiBold(18);
+    wordFont.setLetterSpacing(QFont::AbsoluteSpacing, 2.0);
+    wordmark->setFont(wordFont);
+    sideLayout->addWidget(wordmark);
 
-    auto* tagline = caption(QStringLiteral("ЛАУНЧЕР СБОРКИ"), side);
-    sideLayout->addWidget(tagline);
-    sideLayout->addSpacing(16);
+    sideLayout->addWidget(caption(QStringLiteral("1.21.1 · NEOFORGE"), side));
+    sideLayout->addSpacing(14);
+    sideLayout->addWidget(rule(side));
+    sideLayout->addSpacing(10);
 
     m_pages = new QStackedWidget(this);
 
-    const QStringList titles{ tr("Главное"), tr("Аккаунт"), tr("Настройки"), tr("Диагностика"), tr("О программе") };
+    const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("НАСТРОЙКИ"), tr("ДИАГНОСТИКА"),
+                              tr("О ПРОГРАММЕ") };
     auto* group = new QButtonGroup(this);
     group->setExclusive(true);
     for (int i = 0; i < titles.size(); ++i) {
-        auto* nav = button(titles.at(i), side, QStringLiteral("berryNav"));
+        auto* nav = button(QStringLiteral("%1   %2").arg(i + 1, 2, 10, QLatin1Char('0')).arg(titles.at(i)), side,
+                           QStringLiteral("berryNav"));
+        QFont navFont = theme::semiBold(11);
+        navFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.0);
+        nav->setFont(navFont);
         nav->setCheckable(true);
         nav->setChecked(i == 0);
         group->addButton(nav, i);
@@ -178,8 +237,9 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     }
 
     sideLayout->addStretch(1);
-    auto* version = caption(QStringLiteral("ВЕРСИЯ %1").arg(Config::version()), side);
-    sideLayout->addWidget(version);
+    sideLayout->addWidget(rule(side));
+    sideLayout->addSpacing(8);
+    sideLayout->addWidget(caption(QStringLiteral("v%1 · GPL-3.0").arg(Config::version()), side));
     auto* siteButton = button(tr("Сайт сборки"), side, QStringLiteral("berryGhost"));
     connect(siteButton, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(SiteUrl)); });
     sideLayout->addWidget(siteButton);
@@ -230,8 +290,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
     connect(m_auth, &TelegramAuth::message, this, [this](const QString& text, bool failure) {
         m_authStatus->setText(text);
-        m_authStatus->setObjectName(failure ? QStringLiteral("berryErr") : QStringLiteral("berryDim"));
-        m_authStatus->setStyleSheet(failure ? QStringLiteral("color: #FF6E7B;") : QStringLiteral("color: #747E90;"));
+        m_authStatus->setStyleSheet(failure ? QStringLiteral("color: #FF6E7B;") : QStringLiteral("color: #7C8798;"));
         refreshAuth();
     });
     connect(m_auth, &TelegramAuth::authenticated, this, [this](const QString& nick) {
@@ -244,14 +303,14 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
             m_motd->setText(status.motd.isEmpty() ? tr("Без описания") : status.motd);
             m_players->setText(status.max > 0 ? QStringLiteral("Игроки: %1/%2").arg(status.online).arg(status.max)
                                               : tr("Игроки: %1").arg(status.online));
-            m_pingLabel->setText(QStringLiteral("Ping: %1 мс").arg(status.ping));
+            m_pingLabel->setText(QStringLiteral("PING %1 MS").arg(status.ping));
             m_pingLabel->setStyleSheet(status.ping < 120 ? QStringLiteral("color:#4BE39F;")
                                                          : status.ping < 300 ? QStringLiteral("color:#F5B942;")
                                                                              : QStringLiteral("color:#FF6E7B;"));
         } else {
             m_motd->setText(tr("Сервер недоступен"));
             m_players->setText(status.error);
-            m_pingLabel->setText(QStringLiteral("Ping: —"));
+            m_pingLabel->setText(QStringLiteral("PING —"));
             m_pingLabel->setStyleSheet(QStringLiteral("color:#FF6E7B;"));
         }
     });
@@ -267,11 +326,21 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
 QWidget* Panel::page(QWidget* content)
 {
+    content->setMaximumWidth(1040);
+
+    auto* center = new QWidget;
+    auto* centerBox = new QHBoxLayout(center);
+    centerBox->setContentsMargins(0, 0, 0, 0);
+    centerBox->setSpacing(0);
+    centerBox->addStretch(1);
+    centerBox->addWidget(content, 0);
+    centerBox->addStretch(1);
+
     auto* scroll = new QScrollArea(this);
     scroll->setWidgetResizable(true);
     scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setStyleSheet(QStringLiteral("QScrollArea { background: #0E1015; } QScrollArea > QWidget > QWidget { background: #0E1015; }"));
-    scroll->setWidget(content);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scroll->setWidget(center);
     return scroll;
 }
 
@@ -279,85 +348,110 @@ QWidget* Panel::buildHome()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(26, 24, 26, 24);
-    layout->setSpacing(14);
+    layout->setContentsMargins(32, 26, 32, 26);
+    layout->setSpacing(16);
 
-    // Hero
+    layout->addWidget(pageHeader(content, tr("BERRYTRIP"), tr("Главное"),
+                                 tr("Сборка обновляется сама, вход — через Telegram-бота.")));
+
+    // Hero with the launch action
     auto* hero = new QFrame;
     hero->setObjectName(QStringLiteral("berryHero"));
     auto* heroRow = new QHBoxLayout(hero);
-    heroRow->setContentsMargins(22, 20, 22, 20);
-    heroRow->setSpacing(18);
+    heroRow->setContentsMargins(24, 22, 24, 22);
+    heroRow->setSpacing(20);
 
     auto* logo = new QLabel(hero);
     logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(72, 72, Qt::KeepAspectRatio, Qt::FastTransformation));
+                        .scaled(84, 84, Qt::KeepAspectRatio, Qt::FastTransformation));
     heroRow->addWidget(logo);
 
     auto* text = new QVBoxLayout;
-    text->setSpacing(4);
-    auto* title = new QLabel(tr("BerryTrip"), hero);
-    title->setObjectName(QStringLiteral("berryTitle"));
-    auto* subtitle = new QLabel(tr("Minecraft 1.21.1 · NeoForge 21.1.267"), hero);
-    subtitle->setObjectName(QStringLiteral("berryMuted"));
+    text->setSpacing(6);
+    auto* title = new QLabel(QStringLiteral("BerryTrip"), hero);
+    title->setObjectName(QStringLiteral("berryDisplay"));
+    QFont titleFont = theme::semiBold(38);
+    titleFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.0);
+    title->setFont(titleFont);
+    auto* subtitle = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), hero);
+    subtitle->setObjectName(QStringLiteral("berryCaption"));
     m_chip = new QLabel(tr("ПРОВЕРКА СБОРКИ"), hero);
     m_chip->setObjectName(QStringLiteral("berryWarn"));
+    QFont chipFont = theme::semiBold(10);
+    chipFont.setLetterSpacing(QFont::AbsoluteSpacing, 1.4);
+    m_chip->setFont(chipFont);
     text->addWidget(title);
     text->addWidget(subtitle);
-    text->addWidget(m_chip);
+    text->addSpacing(4);
+    text->addWidget(m_chip, 0, Qt::AlignLeft);
     heroRow->addLayout(text, 1);
+
+    m_play = button(tr("Играть"), hero, QStringLiteral("berryPlay"));
+    m_play->setMinimumSize(232, 64);
+    connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
+    heroRow->addWidget(m_play, 0, Qt::AlignVCenter);
     layout->addWidget(hero);
 
-    // Server
+    // Server + account
+    auto* row = new QHBoxLayout;
+    row->setSpacing(16);
+
     auto* server = card(content);
     auto* serverLayout = new QVBoxLayout(server);
-    serverLayout->setContentsMargins(18, 16, 18, 16);
-    serverLayout->setSpacing(8);
-    serverLayout->addWidget(caption(tr("СЕРВЕР %1").arg(Config::serverAddress()), server));
+    serverLayout->setContentsMargins(20, 18, 20, 18);
+    serverLayout->setSpacing(7);
+    serverLayout->addWidget(caption(tr("СЕРВЕР"), server));
+    auto* address = new QLabel(Config::serverAddress(), server);
+    address->setObjectName(QStringLiteral("berryMono"));
+    serverLayout->addWidget(address);
+    serverLayout->addSpacing(4);
     m_motd = new QLabel(tr("Проверяю сервер…"), server);
     m_motd->setObjectName(QStringLiteral("berryH1"));
     m_motd->setWordWrap(true);
     m_players = new QLabel(tr("Игроки: —"), server);
     m_players->setObjectName(QStringLiteral("berryMuted"));
-    m_pingLabel = new QLabel(tr("Ping: —"), server);
+    m_pingLabel = new QLabel(tr("PING —"), server);
     m_pingLabel->setObjectName(QStringLiteral("berryDim"));
     serverLayout->addWidget(m_motd);
     serverLayout->addWidget(m_players);
     serverLayout->addWidget(m_pingLabel);
+    serverLayout->addStretch(1);
 
     auto* serverButtons = new QHBoxLayout;
-    auto* refresh = button(tr("Обновить пинг"), server);
+    serverButtons->setSpacing(8);
+    auto* refresh = button(tr("Пинг"), server);
     connect(refresh, &QPushButton::clicked, this, &Panel::startPing);
-    auto* telegram = button(tr("Telegram-канал"), server);
+    auto* telegram = button(tr("Telegram"), server);
     connect(telegram, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(TelegramUrl)); });
     serverButtons->addWidget(refresh);
     serverButtons->addWidget(telegram);
     serverButtons->addStretch(1);
     serverLayout->addLayout(serverButtons);
-    layout->addWidget(server);
+    row->addWidget(server, 2);
 
-    // Account strip
     auto* account = card(content);
-    auto* accountRow = new QHBoxLayout(account);
-    accountRow->setContentsMargins(18, 12, 18, 12);
-    auto* accountText = new QVBoxLayout;
-    accountText->setSpacing(2);
-    accountText->addWidget(caption(tr("АККАУНТ"), account));
+    auto* accountLayout = new QVBoxLayout(account);
+    accountLayout->setContentsMargins(20, 18, 20, 18);
+    accountLayout->setSpacing(7);
+    accountLayout->addWidget(caption(tr("АККАУНТ"), account));
     m_homeAccount = new QLabel(tr("Вход не выполнен"), account);
-    accountText->addWidget(m_homeAccount);
-    accountRow->addLayout(accountText, 1);
-    auto* openAccount = button(tr("Аккаунт"), account);
+    m_homeAccount->setObjectName(QStringLiteral("berryH1"));
+    m_homeAccount->setWordWrap(true);
+    accountLayout->addWidget(m_homeAccount);
+    accountLayout->addStretch(1);
+    auto* openAccount = button(tr("Аккаунт →"), account);
     connect(openAccount, &QPushButton::clicked, this, [this] {
         m_pages->setCurrentIndex(1);
         refreshAuth();
     });
-    accountRow->addWidget(openAccount);
-    layout->addWidget(account);
+    accountLayout->addWidget(openAccount, 0, Qt::AlignLeft);
+    row->addWidget(account, 1);
+    layout->addLayout(row);
 
-    // Update + Play
+    // Pack update
     auto* update = card(content);
     auto* updateLayout = new QVBoxLayout(update);
-    updateLayout->setContentsMargins(18, 16, 18, 16);
+    updateLayout->setContentsMargins(20, 18, 20, 18);
     updateLayout->setSpacing(10);
     updateLayout->addWidget(caption(tr("СБОРКА"), update));
     m_progress = new QProgressBar(update);
@@ -369,16 +463,17 @@ QWidget* Panel::buildHome()
     updateLayout->addWidget(m_status);
 
     auto* actions = new QHBoxLayout;
-    m_retry = button(tr("Повторить обновление"), update);
+    m_retry = button(tr("Повторить"), update);
     m_retry->hide();
     connect(m_retry, &QPushButton::clicked, this, &Panel::startSync);
-    m_play = button(tr("Играть"), update, QStringLiteral("berryPrimary"));
-    m_play->setStyleSheet(QStringLiteral("font-size: 18px; padding: 14px 30px;"));
-    m_play->setMinimumSize(220, 54);
-    connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
     actions->addWidget(m_retry);
     actions->addStretch(1);
-    actions->addWidget(m_play);
+    auto* site = button(tr("Сайт"), update, QStringLiteral("berryGhost"));
+    connect(site, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(SiteUrl)); });
+    auto* releases = button(tr("Релизы"), update, QStringLiteral("berryGhost"));
+    connect(releases, &QPushButton::clicked, this, [] { QDesktopServices::openUrl(QUrl(ReleasesUrl)); });
+    actions->addWidget(site);
+    actions->addWidget(releases);
     updateLayout->addLayout(actions);
     layout->addWidget(update);
     layout->addStretch(1);
@@ -390,27 +485,27 @@ QWidget* Panel::buildAccount()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(26, 24, 26, 24);
-    layout->setSpacing(14);
+    layout->setContentsMargins(32, 26, 32, 26);
+    layout->setSpacing(16);
 
-    auto* head = new QLabel(tr("Аккаунт"), content);
-    head->setObjectName(QStringLiteral("berryTitle"));
-    layout->addWidget(head);
-    auto* sub = new QLabel(tr("Вход только через Telegram-бота — Microsoft-аккаунт не нужен."), content);
-    sub->setObjectName(QStringLiteral("berryMuted"));
-    layout->addWidget(sub);
+    layout->addWidget(pageHeader(content, tr("АККАУНТ"), tr("Вход"),
+                                 tr("Только через Telegram-бота — Microsoft-аккаунт не нужен.")));
 
     auto* loginCard = card(content);
+    loginCard->setMaximumWidth(720);
     auto* loginLayout = new QVBoxLayout(loginCard);
-    loginLayout->setContentsMargins(18, 16, 18, 16);
-    loginLayout->setSpacing(10);
+    loginLayout->setContentsMargins(22, 20, 22, 20);
+    loginLayout->setSpacing(12);
     loginLayout->addWidget(caption(tr("НИК В MINECRAFT"), loginCard));
 
     auto* nickRow = new QHBoxLayout;
+    nickRow->setSpacing(12);
     m_nick = new QLineEdit(loginCard);
-    m_nick->setPlaceholderText(tr("3–16 символов, латиница, цифры и _"));
+    m_nick->setPlaceholderText(tr("3–16 символов: латиница, цифры, _"));
+    m_nick->setMinimumHeight(40);
     nickRow->addWidget(m_nick, 1);
     m_login = button(tr("Войти через Telegram"), loginCard, QStringLiteral("berryPrimary"));
+    m_login->setMinimumHeight(40);
     connect(m_login, &QPushButton::clicked, this, &Panel::onAuthClicked);
     nickRow->addWidget(m_login);
     loginLayout->addLayout(nickRow);
@@ -419,8 +514,10 @@ QWidget* Panel::buildAccount()
     m_authStatus->setObjectName(QStringLiteral("berryDim"));
     m_authStatus->setWordWrap(true);
     loginLayout->addWidget(m_authStatus);
+    loginLayout->addWidget(rule(loginCard));
 
     auto* secondary = new QHBoxLayout;
+    secondary->setSpacing(10);
     m_openTelegram = button(tr("Открыть Telegram"), loginCard);
     connect(m_openTelegram, &QPushButton::clicked, this, [this] {
         m_auth->openPendingLink();
@@ -435,23 +532,36 @@ QWidget* Panel::buildAccount()
     secondary->addWidget(m_logout);
     secondary->addStretch(1);
     loginLayout->addLayout(secondary);
-    layout->addWidget(loginCard);
+    layout->addWidget(loginCard, 0, Qt::AlignLeft);
 
-    auto* help = card(content);
-    auto* helpLayout = new QVBoxLayout(help);
-    helpLayout->setContentsMargins(18, 16, 18, 16);
-    helpLayout->setSpacing(6);
-    helpLayout->addWidget(caption(tr("КАК ЭТО РАБОТАЕТ"), help));
-    auto* steps = new QLabel(
-        tr("1. Введи ник, под которым играешь.\n"
-           "2. Лаунчер откроет бота и покажет «Ждём Start».\n"
-           "3. Нажми Start в Telegram — ник попадёт в вайтлист.\n"
-           "4. Токен сохранится в сборке, и «Играть» разблокируется."),
-        help);
-    steps->setObjectName(QStringLiteral("berryMuted"));
-    steps->setWordWrap(true);
-    helpLayout->addWidget(steps);
-    layout->addWidget(help);
+    auto* steps = card(content);
+    steps->setMaximumWidth(720);
+    auto* stepsLayout = new QVBoxLayout(steps);
+    stepsLayout->setContentsMargins(22, 20, 22, 20);
+    stepsLayout->setSpacing(10);
+    stepsLayout->addWidget(caption(tr("КАК ЭТО РАБОТАЕТ"), steps));
+
+    const QVector<QPair<QString, QString>> rows{
+        { QStringLiteral("01"), tr("Введи ник, под которым играешь.") },
+        { QStringLiteral("02"), tr("Лаунчер откроет бота и покажет «Ждём Start».") },
+        { QStringLiteral("03"), tr("Нажми Start в Telegram — ник попадёт в вайтлист.") },
+        { QStringLiteral("04"), tr("Токен сохранится, кнопка «Играть» разблокируется.") },
+    };
+    for (const auto& row : rows) {
+        auto* line = new QHBoxLayout;
+        line->setSpacing(14);
+        auto* number = new QLabel(row.first, steps);
+        number->setObjectName(QStringLiteral("berryAccent"));
+        number->setFont(theme::semiBold(14));
+        number->setFixedWidth(28);
+        auto* text = new QLabel(row.second, steps);
+        text->setObjectName(QStringLiteral("berryMuted"));
+        text->setWordWrap(true);
+        line->addWidget(number, 0, Qt::AlignTop);
+        line->addWidget(text, 1);
+        stepsLayout->addLayout(line);
+    }
+    layout->addWidget(steps, 0, Qt::AlignLeft);
     layout->addStretch(1);
 
     return page(content);
@@ -461,25 +571,26 @@ QWidget* Panel::buildSettings()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(26, 24, 26, 24);
-    layout->setSpacing(14);
+    layout->setContentsMargins(32, 26, 32, 26);
+    layout->setSpacing(16);
 
-    auto* head = new QLabel(tr("Настройки"), content);
-    head->setObjectName(QStringLiteral("berryTitle"));
-    layout->addWidget(head);
-    auto* sub = new QLabel(tr("Моды, графика, память и Java. На сервер эти настройки не влияют."), content);
-    sub->setObjectName(QStringLiteral("berryMuted"));
-    layout->addWidget(sub);
+    layout->addWidget(pageHeader(content, tr("НАСТРОЙКИ"), tr("Сборка"),
+                                 tr("Моды, графика, память и Java. Применяется сразу.")));
 
-    // Mods
+    auto* columns = new QHBoxLayout;
+    columns->setSpacing(16);
+
+    auto* left = new QVBoxLayout;
+    left->setSpacing(16);
+
     auto* mods = card(content);
     auto* modsLayout = new QVBoxLayout(mods);
-    modsLayout->setContentsMargins(18, 16, 18, 16);
+    modsLayout->setContentsMargins(20, 18, 20, 18);
     modsLayout->setSpacing(8);
     modsLayout->addWidget(caption(tr("МОДЫ"), mods));
     for (const Tweaks::Mod& mod : Tweaks::mods()) {
         auto* check = new QCheckBox(mod.label, mods);
-        check->setToolTip(QStringLiteral("%1 — %2. Выключение освобождает память.").arg(mod.label, mod.hint));
+        check->setToolTip(QStringLiteral("%1 — %2").arg(mod.label, mod.hint));
         m_modChecks.append(check);
         connect(check, &QCheckBox::toggled, this, [this, mod](bool on) {
             if (m_loading)
@@ -509,17 +620,17 @@ QWidget* Panel::buildSettings()
         });
         modsLayout->addWidget(check);
     }
+    modsLayout->addSpacing(4);
     auto* locked = new QLabel(tr("Всегда включены: JourneyMap · Emotecraft · Immersive Paintings · Not Enough Animations"),
                               mods);
     locked->setObjectName(QStringLiteral("berryDim"));
     locked->setWordWrap(true);
     modsLayout->addWidget(locked);
-    layout->addWidget(mods);
+    left->addWidget(mods);
 
-    // Graphics
     auto* graphics = card(content);
     auto* graphicsLayout = new QVBoxLayout(graphics);
-    graphicsLayout->setContentsMargins(18, 16, 18, 16);
+    graphicsLayout->setContentsMargins(20, 18, 20, 18);
     graphicsLayout->setSpacing(8);
     graphicsLayout->addWidget(caption(tr("ГРАФИКА"), graphics));
     m_packs = new QCheckBox(tr("Ресурспаки"), graphics);
@@ -538,41 +649,51 @@ QWidget* Panel::buildSettings()
     });
     graphicsLayout->addWidget(m_packs);
     graphicsLayout->addWidget(m_shaders);
-    layout->addWidget(graphics);
+    left->addWidget(graphics);
+    left->addStretch(1);
+    columns->addLayout(left, 1);
 
-    // Memory
+    auto* right = new QVBoxLayout;
+    right->setSpacing(16);
+
     auto* memoryCard = card(content);
     auto* memoryLayout = new QVBoxLayout(memoryCard);
-    memoryLayout->setContentsMargins(18, 16, 18, 16);
-    memoryLayout->setSpacing(8);
-    memoryLayout->addWidget(caption(tr("ПАМЯТЬ (ВСЕГО ОЗУ: %1 ГБ)").arg(totalRamGb()), memoryCard));
+    memoryLayout->setContentsMargins(20, 18, 20, 18);
+    memoryLayout->setSpacing(10);
+    memoryLayout->addWidget(caption(tr("ПАМЯТЬ · ВСЕГО %1 ГБ").arg(totalRamGb()), memoryCard));
     auto* memoryRow = new QHBoxLayout;
+    memoryRow->setSpacing(8);
     auto* minus = button(QStringLiteral("−"), memoryCard);
+    minus->setFixedWidth(42);
+    minus->setMinimumHeight(40);
     m_memory = new QSpinBox(memoryCard);
     m_memory->setRange(2, qMax(4, totalRamGb()));
     m_memory->setSuffix(tr(" ГБ"));
-    m_memory->setFixedWidth(120);
+    m_memory->setMinimumHeight(40);
     auto* plus = button(QStringLiteral("+"), memoryCard);
+    plus->setFixedWidth(42);
+    plus->setMinimumHeight(40);
     connect(minus, &QPushButton::clicked, this, [this] { m_memory->setValue(m_memory->value() - 1); });
     connect(plus, &QPushButton::clicked, this, [this] { m_memory->setValue(m_memory->value() + 1); });
     connect(m_memory, &QSpinBox::valueChanged, this, &Panel::onMemoryChanged);
     memoryRow->addWidget(minus);
-    memoryRow->addWidget(m_memory);
+    memoryRow->addWidget(m_memory, 1);
     memoryRow->addWidget(plus);
-    memoryRow->addStretch(1);
     memoryLayout->addLayout(memoryRow);
-    layout->addWidget(memoryCard);
+    right->addWidget(memoryCard);
 
-    // Java
     auto* javaCard = card(content);
     auto* javaLayout = new QVBoxLayout(javaCard);
-    javaLayout->setContentsMargins(18, 16, 18, 16);
-    javaLayout->setSpacing(8);
+    javaLayout->setContentsMargins(20, 18, 20, 18);
+    javaLayout->setSpacing(10);
     javaLayout->addWidget(caption(tr("JAVA"), javaCard));
-    auto* javaRow = new QHBoxLayout;
     m_javaPath = new QLineEdit(javaCard);
-    m_javaPath->setPlaceholderText(tr("Автоматически (Java из Prism)"));
+    m_javaPath->setPlaceholderText(tr("Автоматически"));
+    m_javaPath->setMinimumHeight(40);
     connect(m_javaPath, &QLineEdit::editingFinished, this, &Panel::onJavaEdited);
+    javaLayout->addWidget(m_javaPath);
+    auto* javaRow = new QHBoxLayout;
+    javaRow->setSpacing(8);
     auto* browse = button(tr("Обзор…"), javaCard);
     connect(browse, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(this, tr("Выберите Java"), m_javaPath->text(),
@@ -588,15 +709,22 @@ QWidget* Panel::buildSettings()
         m_instance->settings()->set(QStringLiteral("OverrideJavaLocation"), false);
         m_settingsStatus->setText(tr("Java выбирается Prism автоматически."));
     });
-    javaRow->addWidget(m_javaPath, 1);
     javaRow->addWidget(browse);
     javaRow->addWidget(autoJava);
+    javaRow->addStretch(1);
     javaLayout->addLayout(javaRow);
-    layout->addWidget(javaCard);
+    right->addWidget(javaCard);
 
-    // Actions
-    auto* actions = new QHBoxLayout;
-    auto* reset = button(tr("Сбросить конфиги"), content);
+    auto* actionsCard = card(content);
+    auto* actionsLayout = new QVBoxLayout(actionsCard);
+    actionsLayout->setContentsMargins(20, 18, 20, 18);
+    actionsLayout->setSpacing(10);
+    actionsLayout->addWidget(caption(tr("ДЕЙСТВИЯ"), actionsCard));
+    auto* apply = button(tr("Применить"), actionsCard, QStringLiteral("berryPrimary"));
+    apply->setMinimumHeight(40);
+    connect(apply, &QPushButton::clicked, this, [this] { applyTweaks(tr("Настройки")); });
+    auto* reset = button(tr("Сбросить конфиги"), actionsCard);
+    reset->setMinimumHeight(40);
     connect(reset, &QPushButton::clicked, this, [this] {
         const QString backup = Tweaks::resetConfigs();
         if (backup.isEmpty()) {
@@ -606,17 +734,17 @@ QWidget* Panel::buildSettings()
         m_settingsStatus->setText(tr("Конфиги сброшены. Копия: %1").arg(backup));
         startSync();
     });
-    auto* apply = button(tr("Применить"), content, QStringLiteral("berryPrimary"));
-    connect(apply, &QPushButton::clicked, this, [this] { applyTweaks(tr("Настройки")); });
-    actions->addWidget(reset);
-    actions->addStretch(1);
-    actions->addWidget(apply);
-    layout->addLayout(actions);
-
-    m_settingsStatus = new QLabel(tr("Изменения применяются сразу."), content);
+    actionsLayout->addWidget(apply);
+    actionsLayout->addWidget(reset);
+    m_settingsStatus = new QLabel(tr("Изменения применяются сразу."), actionsCard);
     m_settingsStatus->setObjectName(QStringLiteral("berryDim"));
     m_settingsStatus->setWordWrap(true);
-    layout->addWidget(m_settingsStatus);
+    actionsLayout->addWidget(m_settingsStatus);
+    right->addWidget(actionsCard);
+    right->addStretch(1);
+    columns->addLayout(right, 1);
+
+    layout->addLayout(columns);
     layout->addStretch(1);
 
     return page(content);
@@ -626,33 +754,35 @@ QWidget* Panel::buildDiagnostics()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(26, 24, 26, 24);
-    layout->setSpacing(14);
+    layout->setContentsMargins(32, 26, 32, 26);
+    layout->setSpacing(16);
 
-    auto* head = new QLabel(tr("Диагностика"), content);
-    head->setObjectName(QStringLiteral("berryTitle"));
-    layout->addWidget(head);
+    layout->addWidget(pageHeader(content, tr("ДИАГНОСТИКА"), tr("Состояние"),
+                                 tr("Всё, что нужно, чтобы понять, почему игра не запускается.")));
 
     auto* status = card(content);
     auto* grid = new QGridLayout(status);
-    grid->setContentsMargins(18, 16, 18, 16);
-    grid->setHorizontalSpacing(18);
-    grid->setVerticalSpacing(7);
+    grid->setContentsMargins(22, 20, 22, 20);
+    grid->setHorizontalSpacing(24);
+    grid->setVerticalSpacing(12);
     const QStringList keys{ tr("Лаунчер"), tr("Экземпляр"), tr("Java"), tr("Моды"),
                             tr("Сборка"), tr("Память"), tr("Диск") };
     for (int i = 0; i < keys.size(); ++i) {
-        auto* key = new QLabel(keys.at(i), status);
-        key->setObjectName(QStringLiteral("berryMuted"));
+        auto* key = caption(keys.at(i), status);
+        key->setMinimumWidth(120);
         auto* value = new QLabel(QStringLiteral("—"), status);
+        value->setObjectName(QStringLiteral("berryMono"));
         value->setWordWrap(true);
+        value->setTextInteractionFlags(Qt::TextSelectableByMouse);
         m_diagValues.append(value);
-        grid->addWidget(key, i, 0);
+        grid->addWidget(key, i, 0, Qt::AlignTop);
         grid->addWidget(value, i, 1);
     }
     grid->setColumnStretch(1, 1);
     layout->addWidget(status);
 
     auto* buttons = new QHBoxLayout;
+    buttons->setSpacing(10);
     auto* refresh = button(tr("Обновить"), content);
     connect(refresh, &QPushButton::clicked, this, &Panel::refreshDiagnostics);
     auto* folder = button(tr("Открыть папку"), content);
@@ -664,8 +794,7 @@ QWidget* Panel::buildDiagnostics()
         const QStringList keys{ tr("Лаунчер"), tr("Экземпляр"), tr("Java"), tr("Моды"),
                                 tr("Сборка"), tr("Память"), tr("Диск") };
         QStringList report;
-        report << QStringLiteral("BerryTrip %1 · BerryTrip pack · Minecraft 1.21.1 · NeoForge 21.1.267")
-                      .arg(Config::version());
+        report << QStringLiteral("BerryTrip %1 · Minecraft 1.21.1 · NeoForge 21.1.267").arg(Config::version());
         for (int i = 0; i < keys.size() && i < m_diagValues.size(); ++i)
             report << QStringLiteral("%1: %2").arg(keys.at(i), m_diagValues.at(i)->text());
         QApplication::clipboard()->setText(report.join(QLatin1Char('\n')));
@@ -685,22 +814,27 @@ QWidget* Panel::buildAbout()
 {
     auto* content = new QWidget;
     auto* layout = new QVBoxLayout(content);
-    layout->setContentsMargins(26, 24, 26, 24);
-    layout->setSpacing(14);
+    layout->setContentsMargins(32, 26, 32, 26);
+    layout->setSpacing(16);
+
+    layout->addWidget(pageHeader(content, tr("О ПРОГРАММЕ"), tr("BerryTrip"),
+                                 tr("Неофициальный форк Prism Launcher для сборки BerryTrip.")));
 
     auto* head = new QFrame;
     head->setObjectName(QStringLiteral("berryHero"));
     auto* headRow = new QHBoxLayout(head);
-    headRow->setContentsMargins(22, 20, 22, 20);
+    headRow->setContentsMargins(24, 22, 24, 22);
+    headRow->setSpacing(20);
     auto* logo = new QLabel(head);
     logo->setPixmap(QPixmap(QStringLiteral(":/berry/berry.png"))
-                        .scaled(64, 64, Qt::KeepAspectRatio, Qt::FastTransformation));
+                        .scaled(72, 72, Qt::KeepAspectRatio, Qt::FastTransformation));
     headRow->addWidget(logo);
     auto* text = new QVBoxLayout;
+    text->setSpacing(6);
     auto* title = new QLabel(QStringLiteral("BerryTrip %1").arg(Config::version()), head);
-    title->setObjectName(QStringLiteral("berryH1"));
-    auto* sub = new QLabel(tr("BerryTrip · Minecraft 1.21.1 · NeoForge 21.1.267"), head);
-    sub->setObjectName(QStringLiteral("berryMuted"));
+    title->setObjectName(QStringLiteral("berryTitle"));
+    auto* sub = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), head);
+    sub->setObjectName(QStringLiteral("berryCaption"));
     text->addWidget(title);
     text->addWidget(sub);
     headRow->addLayout(text, 1);
@@ -708,12 +842,15 @@ QWidget* Panel::buildAbout()
 
     auto* links = card(content);
     auto* linksLayout = new QVBoxLayout(links);
-    linksLayout->setContentsMargins(18, 16, 18, 16);
-    linksLayout->setSpacing(8);
+    linksLayout->setContentsMargins(20, 18, 20, 18);
+    linksLayout->setSpacing(2);
     linksLayout->addWidget(caption(tr("ССЫЛКИ"), links));
+    linksLayout->addSpacing(6);
 
     const auto addLink = [&](const QString& text, const QString& url) {
-        auto* b = button(text, links);
+        auto* b = button(QStringLiteral(">  %1").arg(text), links, QStringLiteral("berryGhost"));
+        b->setMinimumHeight(32);
+        b->setStyleSheet(QStringLiteral("text-align: left; padding-left: 0px;"));
         connect(b, &QPushButton::clicked, this, [url] { QDesktopServices::openUrl(QUrl(url)); });
         linksLayout->addWidget(b);
     };
@@ -726,14 +863,13 @@ QWidget* Panel::buildAbout()
 
     auto* legal = card(content);
     auto* legalLayout = new QVBoxLayout(legal);
-    legalLayout->setContentsMargins(18, 16, 18, 16);
+    legalLayout->setContentsMargins(20, 18, 20, 18);
     legalLayout->setSpacing(6);
     legalLayout->addWidget(caption(tr("ЛИЦЕНЗИЯ"), legal));
     auto* legalText = new QLabel(
-        tr("BerryTrip — неофициальный форк Prism Launcher, распространяется по GNU GPL v3. "
-           "Исходный код этой сборки: github.com/evilvalue/prism-berry, ветка berry, тег v%1 — именно он соответствует "
-           "полученному файлу. © 2022-2026 Prism Launcher Contributors, © 2021-2022 PolyMC Contributors, "
-           "© 2012-2021 MultiMC Contributors, © 2026 BerryTrip.\n\n"
+        tr("Распространяется по GNU GPL v3. Исходный код этой сборки: github.com/evilvalue/prism-berry, "
+           "ветка berry, тег v%1 — он соответствует полученному файлу. © 2022-2026 Prism Launcher "
+           "Contributors, © 2021-2022 PolyMC Contributors, © 2012-2021 MultiMC Contributors, © 2026 BerryTrip.\n\n"
            "Minecraft — торговая марка Mojang Studios. Проект не связан с Mojang и Microsoft.")
             .arg(Config::version()),
         legal);
@@ -744,7 +880,7 @@ QWidget* Panel::buildAbout()
 
     auto* updateCard = card(content);
     auto* updateLayout = new QVBoxLayout(updateCard);
-    updateLayout->setContentsMargins(18, 16, 18, 16);
+    updateLayout->setContentsMargins(20, 18, 20, 18);
     updateLayout->setSpacing(8);
     updateLayout->addWidget(caption(tr("ОБНОВЛЕНИЕ"), updateCard));
     auto* check = button(tr("Проверить обновление"), updateCard, QStringLiteral("berryPrimary"));
@@ -772,13 +908,13 @@ void Panel::refreshAuth()
     const QString nick = m_auth->tokenNick().isEmpty() ? m_auth->nick() : m_auth->tokenNick();
 
     if (state == TelegramAuth::TokenState::Ok) {
-        m_homeAccount->setText(tr("%1 · вход выполнен").arg(nick));
+        m_homeAccount->setText(tr("%1\nвход выполнен").arg(nick));
         m_homeAccount->setStyleSheet(QStringLiteral("color:#4BE39F;"));
         m_login->setText(tr("Войти заново"));
         m_logout->setVisible(true);
     } else {
-        m_homeAccount->setText(pending ? tr("Ожидает подтверждения в Telegram") : tr("Вход не выполнен"));
-        m_homeAccount->setStyleSheet(pending ? QStringLiteral("color:#FFA36B;") : QStringLiteral("color:#A9B2C3;"));
+        m_homeAccount->setText(pending ? tr("Ожидает\nподтверждения") : tr("Вход\nне выполнен"));
+        m_homeAccount->setStyleSheet(pending ? QStringLiteral("color:#FFA36B;") : QStringLiteral("color:#A6B0C2;"));
         m_login->setText(tr("Войти через Telegram"));
         m_logout->setVisible(pending);
     }
@@ -830,7 +966,7 @@ void Panel::refreshLaunch()
     }
 
     const bool running = m_instance->isRunning();
-    m_play->setText(running ? tr("Игра запущена") : tr("Играть"));
+    m_play->setText(running ? tr("Запущено") : tr("Играть"));
     m_play->setEnabled(!running && m_syncFinished && signedIn());
 
     if (!m_chip)
@@ -1016,8 +1152,8 @@ void installSoloUi(QMainWindow* window)
     panel->raise();
 
     window->installEventFilter(new OverlayFilter(panel, window));
-    window->setMinimumSize(960, 680);
-    window->resize(1180, 780);
+    window->setMinimumSize(1000, 700);
+    window->resize(1240, 800);
 }
 
 }  // namespace berry
