@@ -73,6 +73,8 @@ void apply(QWidget* root)
     root->setStyleSheet(QStringLiteral(R"(
 /* ---------- base ---------- */
 QWidget#berryRoot { background: #0B0D12; color: #E9EDF5; }
+QStackedWidget#berryPages { background: #0B0D12; }
+QWidget#berryPage { background: #0B0D12; }
 QWidget { color: #E9EDF5; }
 QLabel { background: transparent; color: #E9EDF5; }
 QLabel:disabled { color: #5C6577; }

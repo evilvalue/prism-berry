@@ -44,6 +44,9 @@ class TelegramAuth : public QObject {
     void poll();
     /// Re-opens an already issued link instead of creating a new one.
     bool openPendingLink();
+    /// Opens a t.me link in Telegram Desktop when it is installed, otherwise
+    /// in the browser. Works for both https://t.me/... and tg:// forms.
+    static bool openTelegramLink(const QString& link);
     /// Removes the saved token and forgets the nick.
     void logout();
 

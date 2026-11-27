@@ -23,6 +23,7 @@
 #include <QSaveFile>
 #include <QSettings>
 #include <QUrl>
+#include <QUrlQuery>
 
 #include "Application.h"
 #include "berry/BerryConfig.h"
@@ -170,7 +171,7 @@ void TelegramAuth::requestLink(const QString& nick)
         store.setValue(QStringLiteral("auth/request_until"), expires);
         store.sync();
 
-        QDesktopServices::openUrl(QUrl(link));
+        openTelegramLink(link);
         emit message(tr("Telegram открыт — нажмите Start в боте."), false);
     });
 }
@@ -264,8 +265,45 @@ bool TelegramAuth::openPendingLink()
 {
     if (!pending() || m_pendingLink.isEmpty())
         return false;
-    QDesktopServices::openUrl(QUrl(m_pendingLink));
+    openTelegramLink(m_pendingLink);
     return true;
+}
+
+bool TelegramAuth::openTelegramLink(const QString& link)
+{
+    const QUrl https(link);
+    if (!https.isValid())
+        return false;
+
+#ifdef Q_OS_WIN
+    const QString roaming = qEnvironmentVariable("APPDATA");
+    const QString local = qEnvironmentVariable("LOCALAPPDATA");
+    const bool desktop = QFileInfo::exists(roaming + QStringLiteral("/Telegram Desktop/tdata")) ||
+                         QFileInfo::exists(local + QStringLiteral("/Programs/Telegram Desktop/Telegram.exe")) ||
+                         QFileInfo::exists(QStringLiteral("C:/Program Files/Telegram Desktop/Telegram.exe")) ||
+                         QFileInfo::exists(QStringLiteral("C:/Program Files (x86)/Telegram Desktop/Telegram.exe"));
+#else
+    const bool desktop = false;
+#endif
+
+    const QString host = https.host().toLower();
+    if (desktop && (host == QLatin1String("t.me") || host == QLatin1String("telegram.me"))) {
+        const QString bot = https.path().mid(1);
+        const QUrlQuery query(https);
+        if (!bot.isEmpty()) {
+            QUrl deep(QStringLiteral("tg://resolve"));
+            QUrlQuery deepQuery;
+            deepQuery.addQueryItem(QStringLiteral("domain"), bot);
+            const QString startToken = query.queryItemValue(QStringLiteral("start"));
+            if (!startToken.isEmpty())
+                deepQuery.addQueryItem(QStringLiteral("start"), startToken);
+            deep.setQuery(deepQuery);
+            if (QDesktopServices::openUrl(deep))
+                return true;
+        }
+    }
+
+    return QDesktopServices::openUrl(https);
 }
 
 void TelegramAuth::logout()

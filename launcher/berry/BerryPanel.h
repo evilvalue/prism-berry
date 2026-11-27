@@ -28,6 +28,7 @@ namespace berry {
 
 class PackSync;
 class ServerPing;
+class Skin3D;
 class TelegramAuth;
 
 /// BerryUp's five screens rebuilt on Qt with the pixel theme:
@@ -104,7 +105,7 @@ class Panel : public QWidget {
     QCheckBox* m_shaders = nullptr;
     QVector<QCheckBox*> m_modChecks;
 
-    QLabel* m_skinPreview = nullptr;
+    Skin3D* m_skinPreview = nullptr;
     QLabel* m_skinName = nullptr;
     QLabel* m_skinStatus = nullptr;
     QLabel* m_capeName = nullptr;

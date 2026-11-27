@@ -193,7 +193,7 @@ set(Launcher_LEGACY_FMLLIBS_BASE_URL "https://files.prismlauncher.org/fmllibs/" 
 ######## Set version numbers ########
 if(BERRY_SOLO)
     set(Launcher_VERSION_MAJOR 0)
-    set(Launcher_VERSION_MINOR 4)
+    set(Launcher_VERSION_MINOR 5)
     set(Launcher_VERSION_PATCH 0)
 else()
     set(Launcher_VERSION_MAJOR 12)

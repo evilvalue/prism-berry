@@ -59,6 +59,7 @@
 #include "berry/BerryPackSync.h"
 #include "berry/BerryPing.h"
 #include "berry/BerrySkin.h"
+#include "berry/BerrySkin3D.h"
 #include "berry/BerryTheme.h"
 #include "berry/BerryTweaks.h"
 #include "minecraft/MinecraftInstance.h"
@@ -212,6 +213,11 @@ QString humanGb(qint64 bytes)
 Panel::Panel(QWidget* parent) : QWidget(parent)
 {
     setObjectName(QStringLiteral("berryRoot"));
+    setAutoFillBackground(true);
+    setAttribute(Qt::WA_StyledBackground, true);
+    QPalette opaque = palette();
+    opaque.setColor(QPalette::Window, QColor(0x0B, 0x0D, 0x12));
+    setPalette(opaque);
     theme::apply(this);
 
     m_auth = new TelegramAuth(this);
@@ -250,6 +256,8 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     sideLayout->addSpacing(10);
 
     m_pages = new QStackedWidget(this);
+    m_pages->setObjectName(QStringLiteral("berryPages"));
+    m_pages->setAutoFillBackground(true);
 
     const QStringList titles{ tr("ГЛАВНОЕ"), tr("АККАУНТ"), tr("СКИНЫ"), tr("НАСТРОЙКИ"),
                               tr("ДИАГНОСТИКА"), tr("О ПРОГРАММЕ") };
@@ -282,6 +290,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     m_pages->addWidget(buildSettings());
     m_pages->addWidget(buildDiagnostics());
     m_pages->addWidget(buildAbout());
+    m_pages->setCurrentIndex(0);
 
     connect(group, &QButtonGroup::idClicked, this, [this](int index) {
         m_pages->setCurrentIndex(index);
@@ -373,9 +382,13 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
 
 QWidget* Panel::page(QWidget* content)
 {
-    content->setMaximumWidth(1040);
+    content->setMaximumWidth(1120);
+    content->setObjectName(QStringLiteral("berryPage"));
+    content->setAttribute(Qt::WA_StyledBackground, true);
 
     auto* center = new QWidget;
+    center->setObjectName(QStringLiteral("berryPage"));
+    center->setAttribute(Qt::WA_StyledBackground, true);
     auto* centerBox = new QHBoxLayout(center);
     centerBox->setContentsMargins(0, 0, 0, 0);
     centerBox->setSpacing(0);
@@ -575,6 +588,7 @@ QWidget* Panel::buildAccount()
         m_auth->logout();
         refreshAuth();
     });
+    m_openTelegram->hide();
     secondary->addWidget(m_openTelegram);
     secondary->addWidget(m_logout);
     secondary->addStretch(1);
@@ -590,7 +604,7 @@ QWidget* Panel::buildAccount()
 
     const QVector<QPair<QString, QString>> rows{
         { QStringLiteral("01"), tr("Введи ник, под которым играешь.") },
-        { QStringLiteral("02"), tr("Лаунчер откроет бота и покажет «Ждём Start».") },
+        { QStringLiteral("02"), tr("Лаунчер откроет Telegram Desktop или браузер.") },
         { QStringLiteral("03"), tr("Нажми Start в Telegram — ник попадёт в вайтлист.") },
         { QStringLiteral("04"), tr("Токен сохранится, кнопка «Играть» разблокируется.") },
     };
@@ -632,11 +646,10 @@ QWidget* Panel::buildSkins()
     previewLayout->setContentsMargins(20, 18, 20, 18);
     previewLayout->setSpacing(10);
     previewLayout->addWidget(caption(tr("ПРЕДПРОСМОТР"), previewCard));
-    m_skinPreview = new QLabel(previewCard);
-    m_skinPreview->setAlignment(Qt::AlignCenter);
-    m_skinPreview->setMinimumSize(250, 300);
-    m_skinPreview->setStyleSheet(QStringLiteral("background:#0E1219; border:2px solid #20252F;"));
+    m_skinPreview = new Skin3D(previewCard);
+    m_skinPreview->setMinimumSize(280, 380);
     previewLayout->addWidget(m_skinPreview, 1);
+    previewLayout->addWidget(caption(tr("ПОТЯНИ МЫШЬЮ — ПОВЕРНЁТСЯ"), previewCard));
     m_skinName = new QLabel(tr("Скин не выбран"), previewCard);
     m_skinName->setObjectName(QStringLiteral("berryDim"));
     m_skinName->setWordWrap(true);
@@ -806,18 +819,16 @@ void Panel::refreshSkinPreview(const QString& path)
 {
     if (!m_skinPreview)
         return;
+
     QImageReader reader(path);
     const QImage image = reader.read();
-    if (image.isNull()) {
-        m_skinPreview->setPixmap(QPixmap());
-        m_skinPreview->setText(tr("НЕТ СКИНА"));
-        return;
-    }
     const bool slim = modelValue() == QLatin1String("slim") ||
                       (modelValue() == QLatin1String("auto") && Skins::detectSlim(image));
-    m_skinPreview->setText(QString());
-    m_skinPreview->setPixmap(QPixmap::fromImage(Skins::preview(image, slim, 3))
-                                 .scaled(230, 280, Qt::KeepAspectRatio, Qt::FastTransformation));
+    m_skinPreview->setSlim(slim);
+    m_skinPreview->setSkin(image);
+
+    const QString capePath = Skins::currentCape();
+    m_skinPreview->setCape(capePath.isEmpty() ? QImage() : QImage(capePath));
 }
 
 void Panel::pickSkin()
@@ -1241,7 +1252,7 @@ void Panel::refreshAuth()
 
     if (pending) {
         m_login->setText(tr("Открыть Telegram"));
-        m_openTelegram->setVisible(true);
+        m_openTelegram->setVisible(false);
         if (!m_pollTimer->isActive())
             m_pollTimer->start();
     } else {
@@ -1263,7 +1274,10 @@ void Panel::refreshAuth()
 void Panel::onAuthClicked()
 {
     if (m_auth->pending()) {
-        m_auth->openPendingLink();
+        if (m_auth->openPendingLink())
+            m_authStatus->setText(tr("Открываю Telegram — нажми Start в боте."));
+        else
+            m_authStatus->setText(tr("Ссылка истекла — войди заново."));
         return;
     }
 
