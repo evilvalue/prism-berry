@@ -290,10 +290,18 @@ bool Updater::install(QString* error)
     QString installDir = QSettings(QStringLiteral("HKEY_CURRENT_USER\\Software\\BerryTrip"), QSettings::NativeFormat)
                              .value(QStringLiteral("InstallDir"))
                              .toString();
-    if (installDir.isEmpty())
+    if (installDir.isEmpty()) {
+        // The old build wrote the shared PrismLauncher key; accept it too.
+        installDir = QSettings(QStringLiteral("HKEY_CURRENT_USER\Software\PrismLauncher"),
+                         QSettings::NativeFormat)
+                         .value(QStringLiteral("InstallDir"))
+                         .toString();
+    }
+    if (installDir.isEmpty() || !QFileInfo(installDir).isDir())
         installDir = QCoreApplication::applicationDirPath();
 
     const QString installer = QDir::toNativeSeparators(m_installerPath);
+    const QString tempFolder = QDir::toNativeSeparators(QFileInfo(m_installerPath).absolutePath());
     const QString installedExe = QDir::toNativeSeparators(QDir(installDir).filePath(QStringLiteral("berrytrip.exe")));
     const QString fallbackExe = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
 
@@ -304,26 +312,33 @@ bool Updater::install(QString* error)
     out << "set \"BERRY_INSTALLER=" << installer << "\"\r\n";
     out << "set \"BERRY_EXE=" << installedExe << "\"\r\n";
     out << "set \"BERRY_OLD=" << fallbackExe << "\"\r\n";
+    out << "set \"BERRY_DIR=" << QDir::toNativeSeparators(installDir) << "\"\r\n";
+    out << "set \"BERRY_TEMP=" << tempFolder << "\"\r\n";
     out << "for /l %%i in (1,1,60) do (\r\n";
-    out << "  tasklist /FI \"PID eq %BERRY_PID%\" /NH 2>nul | find \"%BERRY_PID%\" >nul || goto closed\r\n";
-    out << "  timeout /t 1 /nobreak >nul\r\n";
+    out << "  tasklist /FI \"PID eq %BERRY_PID%\" /NH 2>" "nul | find \"%BERRY_PID%\" >" "nul || goto closed\r\n";
+    out << "  timeout /t 1 /nobreak >" "nul\r\n";
     out << ")\r\n";
     out << ":closed\r\n";
-    out << "taskkill /F /PID %BERRY_PID% >nul 2>&1\r\n";
-    out << "taskkill /F /IM berrytrip.exe >nul 2>&1\r\n";
-    out << "timeout /t 2 /nobreak >nul\r\n";
-    out << "\"%BERRY_INSTALLER%\" /S\r\n";
+    out << "taskkill /F /PID %BERRY_PID% >" "nul 2>&1\r\n";
+    out << "taskkill /F /IM berrytrip.exe >" "nul 2>&1\r\n";
+    out << "timeout /t 2 /nobreak >" "nul\r\n";
+    // /D= is how a silent NSIS install lands in the folder the user picked;
+    // without it the installer would fall back to its default location.
+    out << "\"%BERRY_INSTALLER%\" /S /D=%BERRY_DIR%\r\n";
     out << "if errorlevel 1 (\r\n";
-    out << "  timeout /t 3 /nobreak >nul\r\n";
-    out << "  taskkill /F /IM berrytrip.exe >nul 2>&1\r\n";
-    out << "  \"%BERRY_INSTALLER%\" /S\r\n";
+    out << "  timeout /t 3 /nobreak >" "nul\r\n";
+    out << "  taskkill /F /IM berrytrip.exe >" "nul 2>&1\r\n";
+    out << "  \"%BERRY_INSTALLER%\" /S /D=%BERRY_DIR%\r\n";
     out << ")\r\n";
-    out << "timeout /t 1 /nobreak >nul\r\n";
+    out << "timeout /t 1 /nobreak >" "nul\r\n";
     out << "if exist \"%BERRY_EXE%\" (\r\n";
     out << "  start \"\" \"%BERRY_EXE%\"\r\n";
     out << ") else (\r\n";
     out << "  start \"\" \"%BERRY_OLD%\"\r\n";
     out << ")\r\n";
+    // Do not leave every downloaded installer behind in %TEMP%.
+    out << "del \"%BERRY_INSTALLER%\" >" "nul 2>&1\r\n";
+    out << "rmdir \"%BERRY_TEMP%\" >" "nul 2>&1\r\n";
     out << "del \"%~f0\"\r\n";
     script.close();
 

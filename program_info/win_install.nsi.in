@@ -8,8 +8,8 @@ AllowSkipFiles off
 Unicode true
 
 Name "@Launcher_DisplayName@"
-InstallDir "$LOCALAPPDATA\Programs\@Launcher_CommonName@"
-InstallDirRegKey HKCU "Software\@Launcher_CommonName@" "InstallDir"
+InstallDir "$LOCALAPPDATA\Programs\BerryTrip"
+InstallDirRegKey HKCU "Software\BerryTrip" "InstallDir"
 RequestExecutionLevel user
 OutFile "../@Launcher_CommonName@-Setup.exe"
 
@@ -388,7 +388,7 @@ Section "@Launcher_DisplayName@"
   File /nonfatal /r "tls"
 
   ; Write the installation path into the registry
-  WriteRegStr HKCU Software\@Launcher_CommonName@ "InstallDir" "$INSTDIR"
+  WriteRegStr HKCU Software\BerryTrip "InstallDir" "$INSTDIR"
 
   ; Write the URL Handler into registry for curseforge
   WriteRegStr HKCU Software\Classes\curseforge "URL Protocol" ""
@@ -473,7 +473,7 @@ Section "Uninstall"
   nsExec::Exec /TIMEOUT=2000 'TaskKill /IM @Launcher_APP_BINARY_NAME@.exe /F'
 
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\@Launcher_CommonName@"
-  DeleteRegKey HKCU SOFTWARE\@Launcher_CommonName@
+  DeleteRegKey HKCU SOFTWARE\BerryTrip
 
   Delete $INSTDIR\@Launcher_APP_BINARY_NAME@.exe
   Delete $INSTDIR\@Launcher_APP_BINARY_NAME@_filelink.exe
