@@ -1424,18 +1424,16 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     // ------------------------------------------------------------------ footer
     auto* footer = new QFrame(this);
     footer->setObjectName(QStringLiteral("berryFooter"));
-    footer->setFixedHeight(34);
+    footer->setFixedHeight(46);
     auto* footerRow = new QHBoxLayout(footer);
     footerRow->setContentsMargins(14, 0, 14, 0);
     footerRow->setSpacing(0);
     auto* footLeft = new QLabel(tr("СЕРВЕР %1").arg(Config::serverAddress()), footer);
     footLeft->setObjectName(QStringLiteral("berryFooterCell"));
-    footLeft->setWordWrap(true);
     auto* footMid = new QLabel(QStringLiteral("TELEGRAM · @KILLBERRIESBOT"), footer);
     footMid->setObjectName(QStringLiteral("berryFooterCell"));
     auto* footRight = new QLabel(QStringLiteral("BERRYTRIP %1 · PIXEL UI").arg(Config::version()), footer);
     footRight->setObjectName(QStringLiteral("berryFooterCell"));
-    footRight->setWordWrap(true);
     footerRow->addWidget(footLeft);
     footerRow->addStretch(1);
     footerRow->addWidget(footMid);
@@ -1747,6 +1745,7 @@ QWidget* Panel::buildHome()
     titleBox->addWidget(title);
     auto* subtitle = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), hero);
     subtitle->setObjectName(QStringLiteral("berryCaption"));
+    subtitle->setWordWrap(false);
     titleBox->addWidget(subtitle);
     titleRow->addLayout(titleBox, 1);
 
@@ -1855,9 +1854,13 @@ QWidget* Panel::buildHome()
     m_motd = new QLabel(tr("Проверяю сервер…"), server);
     m_motd->setObjectName(QStringLiteral("berryH1"));
     m_motd->setWordWrap(true);
+    // The pixel font draws taller than its reported line box, so the label is
+    // given real room: otherwise its glyphs landed on top of the player row.
+    m_motd->setMinimumHeight(30);
     serverLayout->addWidget(m_motd);
     auto* serverState = new QHBoxLayout;
     serverState->setSpacing(12);
+    serverState->setContentsMargins(0, 6, 0, 0);
     m_players = new QLabel(tr("Игроки: —"), server);
     m_players->setObjectName(QStringLiteral("berryMuted"));
     m_pingLabel = new QLabel(tr("PING —"), server);
@@ -1905,6 +1908,7 @@ QWidget* Panel::buildHome()
     m_status = new QLabel(tr("Подготовка…"), build);
     m_status->setObjectName(QStringLiteral("berryDim"));
     m_status->setWordWrap(true);
+    m_status->setMinimumHeight(28);
     buildLayout->addWidget(m_status);
     buildLayout->addStretch(1);
     auto* buildActions = new QHBoxLayout;
@@ -2953,16 +2957,14 @@ void Panel::refreshLaunch()
 
     if (!m_chip)
         return;
-    if (running) {
-        m_chip->setText(tr("ИГРА ЗАПУЩЕНА"));
-        m_chip->setStyleSheet(QStringLiteral("color:#FF5D86;"));
-    } else if (m_syncFinished && signedIn()) {
-        m_chip->setText(tr("ГОТОВО К ИГРЕ"));
-        m_chip->setStyleSheet(QStringLiteral("color:#4BE39F;"));
-    } else {
-        m_chip->setText(tr("НУЖЕН ВХОД И ОБНОВЛЕНИЕ"));
-        m_chip->setStyleSheet(QStringLiteral("color:#F5B942;"));
-    }
+    // setChip, not setStyleSheet: a bare colour wiped the chip's background,
+    // border and padding, so the text floated on a broken frame.
+    if (running)
+        setChip(m_chip, tr("ИГРА ЗАПУЩЕНА"), ToneAccent);
+    else if (m_syncFinished && signedIn())
+        setChip(m_chip, tr("ГОТОВО К ИГРЕ"), ToneOk);
+    else
+        setChip(m_chip, tr("НУЖЕН ВХОД И ОБНОВЛЕНИЕ"), ToneWarn);
 }
 
 void Panel::startSync()

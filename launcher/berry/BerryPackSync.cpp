@@ -37,6 +37,21 @@ namespace {
 constexpr int kMaxParallelDownloads = 4;
 constexpr int kMaxDownloadRetries = 2;
 
+/// Packwiz paths are relative to the game folder. Neither a broken nor a
+/// hostile index may escape it: "..\..\Startup\evil.exe" must never be
+/// written outside the instance.
+bool isSafeRelativePath(const QString& path)
+{
+    if (path.isEmpty() || path.contains(QLatin1Char('\\')) || path.contains(QLatin1Char(':')))
+        return false;
+    const QString clean = QDir::cleanPath(path);
+    if (clean.isEmpty() || clean == QLatin1String(".") || clean == QLatin1String(".."))
+        return false;
+    if (clean.startsWith(QLatin1String("../")) || clean.startsWith(QLatin1Char('/')))
+        return false;
+    return true;
+}
+
 /// Files Minecraft itself writes settings into. The pack ships their defaults
 /// for a fresh install only: replacing them on every sync would wipe everything
 /// the player changed in game (and did, on each launch and after each exit).
@@ -170,11 +185,22 @@ void PackSync::parseIndex(const QByteArray& data)
         if (!path || !hash)
             continue;
 
+        const QString entryPath = QString::fromStdString(*path);
         Entry entry;
         entry.hashFormat = QString::fromStdString((*file)["hash-format"].value<std::string>().value_or(defaultFormat));
         entry.hash = QByteArray::fromHex(QByteArray::fromStdString(*hash).toLower());
         entry.metafile = (*file)["metafile"].value_or(false);
-        m_entries.insert(QString::fromStdString(*path), entry);
+        if (!isSafeRelativePath(entryPath)) {
+            fail(QStringLiteral("%1: путь вне папки игры, файл пропущен").arg(entryPath));
+            continue;
+        }
+        // An entry without a usable hash would compare equal to every
+        // unreadable file and be reported as satisfied forever.
+        if (entry.hash.isEmpty()) {
+            fail(QStringLiteral("%1: пустая контрольная сумма, файл пропущен").arg(entryPath));
+            continue;
+        }
+        m_entries.insert(entryPath, entry);
     }
 
     if (m_entries.isEmpty()) {
@@ -310,6 +336,14 @@ void PackSync::startNextDownloads()
 
 void PackSync::startDownload(const Job& job)
 {
+    if (!isSafeRelativePath(job.diskPath)) {
+        fail(QStringLiteral("%1: путь вне папки игры").arg(job.diskPath));
+        completeEntry(job.entryPath);
+        startNextDownloads();
+        maybeFinish();
+        return;
+    }
+
     const QString target = QDir(m_root).filePath(job.diskPath);
     QDir().mkpath(QFileInfo(target).absolutePath());
 
@@ -519,7 +553,17 @@ bool PackSync::readMetafile(const QString& localPath, const QString& metafilePat
 
     payload->kind = Job::Kind::Blob;
     payload->diskPath = (dir.isEmpty() || dir == QLatin1String(".")) ? fileName : dir + QLatin1Char('/') + fileName;
-    payload->url = QUrl(QString::fromStdString(*url));
+    if (!isSafeRelativePath(payload->diskPath)) {
+        *error = QStringLiteral("файл мода лежит вне папки игры");
+        return false;
+    }
+
+    const QUrl downloadUrl(QString::fromStdString(*url));
+    if (downloadUrl.scheme() != QLatin1String("https") && downloadUrl.scheme() != QLatin1String("http")) {
+        *error = QStringLiteral("недопустимый адрес загрузки");
+        return false;
+    }
+    payload->url = downloadUrl;
     payload->hashFormat = QString::fromStdString((*download)["hash-format"].value<std::string>().value_or("sha512"));
     payload->hash = QByteArray::fromHex(QByteArray::fromStdString(*hash).toLower());
     return true;

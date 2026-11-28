@@ -240,7 +240,7 @@ void applyDistantHorizons()
                 QFile::rename(path, destination);
             }
         }
-        rootDir.removeRecursively();
+        QDir(source).removeRecursively();
     }
 }
 
@@ -307,37 +307,37 @@ const QVector<Tweaks::Mod>& Tweaks::mods()
 
 bool Tweaks::modEnabled(const Mod& mod)
 {
-                QSettings settings(settingsPath(), QSettings::IniFormat);
+    QSettings settings(settingsPath(), QSettings::IniFormat);
     return settings.value(QStringLiteral("tweaks/mod.") + mod.key, mod.defaultOn).toBool();
 }
 
 void Tweaks::setModEnabled(const Mod& mod, bool enabled)
 {
-                QSettings settings(settingsPath(), QSettings::IniFormat);
+    QSettings settings(settingsPath(), QSettings::IniFormat);
     settings.setValue(QStringLiteral("tweaks/mod.") + mod.key, enabled);
 }
 
 bool Tweaks::packsEnabled()
 {
-                QSettings settings(settingsPath(), QSettings::IniFormat);
+    QSettings settings(settingsPath(), QSettings::IniFormat);
     return settings.value(QStringLiteral("tweaks/packs"), true).toBool();
 }
 
 void Tweaks::setPacksEnabled(bool enabled)
 {
-                QSettings settings(settingsPath(), QSettings::IniFormat);
+    QSettings settings(settingsPath(), QSettings::IniFormat);
     settings.setValue(QStringLiteral("tweaks/packs"), enabled);
 }
 
 bool Tweaks::shadersEnabled()
 {
-                QSettings settings(settingsPath(), QSettings::IniFormat);
+    QSettings settings(settingsPath(), QSettings::IniFormat);
     return settings.value(QStringLiteral("tweaks/shaders"), false).toBool();
 }
 
 void Tweaks::setShadersEnabled(bool enabled)
 {
-                QSettings settings(settingsPath(), QSettings::IniFormat);
+    QSettings settings(settingsPath(), QSettings::IniFormat);
     settings.setValue(QStringLiteral("tweaks/shaders"), enabled);
 }
 

@@ -16,6 +16,10 @@
 #include <QJsonObject>
 #include <QSaveFile>
 
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
+
 #include "Application.h"
 #include "InstanceList.h"
 #include "berry/BerryConfig.h"
@@ -45,17 +49,37 @@ bool writeFile(const QString& path, const QByteArray& data, QString* error)
     return true;
 }
 
+/// Java refuses to start when the heap does not fit, so the default follows
+/// the machine instead of the old fixed 8 GB that broke 4 GB laptops.
+qint64 totalMemoryMb()
+{
+#ifdef Q_OS_WIN
+    MEMORYSTATUSEX status{};
+    status.dwLength = sizeof(status);
+    if (::GlobalMemoryStatusEx(&status))
+        return static_cast<qint64>(status.ullTotalPhys / (1024 * 1024));
+#endif
+    return 8192;
+}
+
 QByteArray instanceConfig()
 {
-    return QByteArrayLiteral(
+    const qint64 total = totalMemoryMb();
+    const int maxMb = static_cast<int>(qBound(qint64(2048), total / 2, qint64(8192)));
+    const int minMb = qMin(2048, maxMb / 2);
+
+    QByteArray config = QByteArrayLiteral(
         "[General]\n"
         "ConfigVersion=1.3\n"
         "InstanceType=OneSix\n"
         "name=BerryTrip\n"
         "OverrideMemory=true\n"
-        "MinMemAlloc=2048\n"
-        "MaxMemAlloc=8192\n"
-        "AutomaticJava=true\n");
+        "MinMemAlloc=");
+    config += QByteArray::number(minMb);
+    config += "\nMaxMemAlloc=";
+    config += QByteArray::number(maxMb);
+    config += "\nAutomaticJava=true\n";
+    return config;
 }
 
 QByteArray componentManifest()

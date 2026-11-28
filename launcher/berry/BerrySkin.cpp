@@ -278,9 +278,18 @@ QString Skins::copyInto(const QString& source, bool cape, QString* error)
             }
         }
     }
-    QFile::remove(target);
-    if (!QFile::copy(source, target)) {
+    // Copy next to the target first: deleting the current file and then
+    // failing used to lose the skin the player had been using.
+    const QString temp = target + QStringLiteral(".part");
+    QFile::remove(temp);
+    if (!QFile::copy(source, temp)) {
         *error = QStringLiteral("не удалось скопировать файл в %1").arg(dir);
+        return {};
+    }
+    QFile::remove(target);
+    if (!QFile::rename(temp, target)) {
+        QFile::remove(temp);
+        *error = QStringLiteral("не удалось сохранить файл в %1").arg(dir);
         return {};
     }
     return target;

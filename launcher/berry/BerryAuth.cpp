@@ -63,14 +63,10 @@ QByteArray base64UrlDecode(const QString& input)
 
 TelegramAuth::TelegramAuth(QObject* parent) : QObject(parent)
 {
+    // Older builds kept the pending login next to the nick; the one-time
+    // secret does not belong in a plain-text file, so drop the leftovers.
     QSettings store(settingsPath(), QSettings::IniFormat);
-    m_pendingId = store.value(QStringLiteral("auth/request_id")).toString();
-    m_pendingSecret = store.value(QStringLiteral("auth/request_secret")).toString();
-    m_pendingNick = store.value(QStringLiteral("auth/request_nick")).toString();
-    m_pendingLink = store.value(QStringLiteral("auth/request_link")).toString();
-    m_pendingUntil = store.value(QStringLiteral("auth/request_until"), qint64(0)).toLongLong();
-
-    if (!m_pendingId.isEmpty() && QDateTime::currentMSecsSinceEpoch() >= m_pendingUntil)
+    if (store.contains(QStringLiteral("auth/request_id")))
         clearPending();
 }
 
@@ -180,14 +176,6 @@ void TelegramAuth::requestLink(const QString& nick)
         m_pendingLink = link;
         m_pendingUntil = expires;
 
-        QSettings store(settingsPath(), QSettings::IniFormat);
-        store.setValue(QStringLiteral("auth/request_id"), id);
-        store.setValue(QStringLiteral("auth/request_secret"), secret);
-        store.setValue(QStringLiteral("auth/request_nick"), nick);
-        store.setValue(QStringLiteral("auth/request_link"), link);
-        store.setValue(QStringLiteral("auth/request_until"), expires);
-        store.sync();
-
         if (openTelegramLink(link)) {
             emit message(tr("Telegram открыт — нажмите Start в боте."), false);
         } else {
@@ -292,12 +280,15 @@ bool TelegramAuth::openPendingLink()
 bool TelegramAuth::openTelegramLink(const QString& link)
 {
     const QUrl https(link);
-    if (!https.isValid())
+    // Only Telegram links are opened here. Anything else (including a value
+    // planted in the config) is ignored instead of being handed to the
+    // desktop URL handler.
+    if (!https.isValid() || https.scheme() != QLatin1String("https"))
         return false;
 
     const QString host = https.host().toLower();
     if (host != QLatin1String("t.me") && host != QLatin1String("telegram.me"))
-        return QDesktopServices::openUrl(https);
+        return false;
 
     // "killberriesbot?start=..." -> bot name without a trailing slash.
     const QString path = https.path().mid(1);
@@ -408,9 +399,19 @@ TelegramAuth::TokenState TelegramAuth::tokenState() const
     if (dot <= 0)
         return TokenState::Broken;
 
-    const auto payload = QJsonDocument::fromJson(base64UrlDecode(token.left(dot))).object();
-    const QString tokenNick = payload.value(QStringLiteral("nick")).toString();
-    const double expires = payload.value(QStringLiteral("exp")).toDouble();
+    QString tokenNick;
+    double expires = 0;
+    const QStringList segments = token.split(QLatin1Char('.'));
+    for (int i = 0; i < segments.size() && i < 2; ++i) {
+        const auto claims = QJsonDocument::fromJson(base64UrlDecode(segments.at(i))).object();
+        const QString nick = claims.value(QStringLiteral("nick")).toString();
+        const double exp = claims.value(QStringLiteral("exp")).toDouble();
+        if (!nick.isEmpty() && exp > 0) {
+            tokenNick = nick;
+            expires = exp;
+            break;
+        }
+    }
     if (tokenNick.isEmpty() || expires <= 0)
         return TokenState::Broken;
 
