@@ -722,7 +722,7 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
 
 #ifdef BERRY_SOLO
         // Pixel window geometry, remembered between launches.
-        m_settings->registerSetting("BerryWindowSize", QSize());
+        m_settings->registerSetting("BerryWindowGeometry", QString());
         m_settings->registerSetting("BerryWindowMaximized", false);
 #endif
 

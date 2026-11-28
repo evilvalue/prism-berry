@@ -23,7 +23,7 @@ constexpr auto ServerHost = "135.181.126.167";
 constexpr quint16 ServerPort = 25737;
 constexpr auto PackBaseUrl = "https://evilvalue.github.io/berry/";
 constexpr auto AuthApiUrl = "http://135.181.126.167:25712";
-constexpr auto LauncherVersion = "0.7.10";
+constexpr auto LauncherVersion = "0.7.11";
 }  // namespace
 
 QString Config::version()

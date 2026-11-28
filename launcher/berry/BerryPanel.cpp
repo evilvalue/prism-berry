@@ -67,6 +67,8 @@
 #include <QVBoxLayout>
 #include <QtConcurrent>
 
+#include <functional>
+
 #include "Application.h"
 #include "LaunchMode.h"
 #include "berry/BerryAuth.h"
@@ -180,25 +182,50 @@ class PopupFilter : public QObject {
 };
 
 #ifdef Q_OS_WIN
-/// A frameless window has no resize border, so the edges are answered here and
-/// the native thick frame installed by installSoloUi does the actual resizing.
-class FramelessFrameFilter : public QAbstractNativeEventFilter {
+/// Qt's frameless windows have no resize border. This keeps the native thick
+/// frame in place and answers the window edges, so the pixel frame still sizes
+/// like a normal window. Both live in one place and are re-asserted on demand,
+/// which survives hiding to the tray, maximising and window recreation.
+class FramelessResizeFilter : public QAbstractNativeEventFilter {
    public:
-    explicit FramelessFrameFilter(HWND window) : m_window(window) {}
+    explicit FramelessResizeFilter(QWidget* window) : m_window(window) {}
+
+    ~FramelessResizeFilter() override
+    {
+        // The application keeps a raw pointer to every native filter.
+        if (qApp)
+            qApp->removeNativeEventFilter(this);
+    }
+
+    /// Windows only sizes a window that has WS_THICKFRAME; Qt never sets it on
+    /// a frameless window, and anything that rewrites the style drops it again.
+    static void ensureResizeFrame(HWND hwnd)
+    {
+        const LONG_PTR style = ::GetWindowLongPtr(hwnd, GWL_STYLE);
+        if (style & WS_THICKFRAME)
+            return;
+        ::SetWindowLongPtr(hwnd, GWL_STYLE, style | WS_THICKFRAME);
+        ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    }
 
     bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override
     {
         if (eventType != QByteArrayLiteral("windows_generic_MSG"))
             return false;
         auto* msg = static_cast<MSG*>(message);
-        if (msg->hwnd != m_window || msg->message != WM_NCHITTEST)
+        if (msg->message != WM_NCHITTEST)
             return false;
-        if (::IsZoomed(m_window) || ::IsIconic(m_window))
+
+        const HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+        if (!hwnd || msg->hwnd != hwnd || ::IsZoomed(hwnd) || ::IsIconic(hwnd))
             return false;
+
+        ensureResizeFrame(hwnd);
 
         const POINT point{ GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam) };
         RECT rect{};
-        if (!::GetWindowRect(m_window, &rect))
+        if (!::GetWindowRect(hwnd, &rect))
             return false;
 
         constexpr int Border = 6;
@@ -229,7 +256,7 @@ class FramelessFrameFilter : public QAbstractNativeEventFilter {
     }
 
    private:
-    HWND m_window;
+    QWidget* m_window;
 };
 #endif
 
@@ -263,13 +290,17 @@ class PrismChromeFilter : public QObject {
 /// download or a just-launched game is not cut off. The tray icon brings it back.
 class TrayFilter : public QObject {
    public:
-    TrayFilter(QWidget* window, QSystemTrayIcon* tray) : QObject(window), m_window(window), m_tray(tray) {}
+    TrayFilter(QWidget* window, QSystemTrayIcon* tray, std::function<void()> onHide)
+        : QObject(window), m_window(window), m_tray(tray), m_onHide(std::move(onHide))
+    {}
 
    protected:
     bool eventFilter(QObject* watched, QEvent* event) override
     {
         if (watched == m_window && event->type() == QEvent::Close) {
             event->ignore();
+            if (m_onHide)
+                m_onHide();
             m_window->hide();
             if (!m_hinted) {
                 m_hinted = true;
@@ -285,6 +316,7 @@ class TrayFilter : public QObject {
    private:
     QWidget* m_window;
     QSystemTrayIcon* m_tray;
+    std::function<void()> m_onHide;
     bool m_hinted = false;
 };
 
@@ -1211,6 +1243,27 @@ int totalRamGb()
         return static_cast<int>(status.ullTotalPhys / (1024ull * 1024ull * 1024ull));
 #endif
     return 8;
+}
+
+QRect parseWindowGeometry(const QString& value)
+{
+    const QStringList parts = value.split(QLatin1Char(','));
+    if (parts.size() != 4)
+        return {};
+    bool ok = false;
+    const int x = parts.at(0).toInt(&ok);
+    if (!ok)
+        return {};
+    const int y = parts.at(1).toInt(&ok);
+    if (!ok)
+        return {};
+    const int width = parts.at(2).toInt(&ok);
+    if (!ok || width <= 0)
+        return {};
+    const int height = parts.at(3).toInt(&ok);
+    if (!ok || height <= 0)
+        return {};
+    return QRect(x, y, width, height);
 }
 
 QString humanGb(qint64 bytes)
@@ -3166,47 +3219,54 @@ void installSoloUi(QMainWindow* window)
         qApp->installEventFilter(new PopupFilter(panel, qApp));
         window->installEventFilter(new PrismChromeFilter(window, window));
     }
-    QTimer::singleShot(0, window, [panel] { panel->setGeometry(panel->parentWidget()->rect()); });
-
     // Fit the pixel window to the real screen. The old fixed 1240x760 was
     // taller than the work area on 1366x768, so the footer and the play area
     // were cut off, and a fixed size also made maximise do nothing.
     const QRect available = window->screen() ? window->screen()->availableGeometry() : QRect(0, 0, 1280, 800);
     QSize target(1240, 760);
-    const QVariant savedSize = APPLICATION->settings()->get(QStringLiteral("BerryWindowSize"));
-    if (savedSize.isValid() && savedSize.toSize().isValid() && !savedSize.toSize().isEmpty())
-        target = savedSize.toSize();
-    target.setWidth(qBound(1000, target.width(), qMax(1000, available.width() - 24)));
-    target.setHeight(qBound(620, target.height(), qMax(620, available.height() - 24)));
-    window->setMinimumSize(1000, 620);
+    QPoint position;
+    // "x,y,w,h" is written by saveWindowGeometry() below; a plain string keeps
+    // the value readable in the config instead of relying on QRect INI syntax.
+    const QRect saved = parseWindowGeometry(APPLICATION->settings()->get(QStringLiteral("BerryWindowGeometry")).toString());
+    if (saved.isValid()) {
+        target = saved.size();
+        if (available.intersects(saved))
+            position = saved.topLeft();  // otherwise stay centred, never off-screen
+    }
+    target.setWidth(qBound(qMin(1000, available.width()), target.width(), available.width()));
+    target.setHeight(qBound(qMin(620, available.height()), target.height(), available.height()));
+    window->setMinimumSize(qMin(1000, available.width()), qMin(620, available.height()));
     window->resize(target);
-    window->move(available.center() - QPoint(target.width() / 2, target.height() / 2));
+    if (position.isNull())
+        position = available.center() - QPoint(target.width() / 2, target.height() / 2);
+    // Never restore a window the user cannot reach again.
+    position.setX(qBound(available.left(), position.x(), available.right() - target.width() + 1));
+    position.setY(qBound(available.top(), position.y(), available.bottom() - target.height() + 1));
+    window->move(position);
     if (APPLICATION->settings()->get(QStringLiteral("BerryWindowMaximized")).toBool())
         window->showMaximized();
 
 #ifdef Q_OS_WIN
-    // Give the frameless window real draggable edges (and keep them after the
-    // window is re-shown), otherwise it could only be maximised.
-    QTimer::singleShot(0, window, [window] {
-        const HWND hwnd = reinterpret_cast<HWND>(window->winId());
-        const LONG_PTR style = ::GetWindowLongPtr(hwnd, GWL_STYLE);
-        ::SetWindowLongPtr(hwnd, GWL_STYLE, style | WS_THICKFRAME);
-        ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
-                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
-        static bool installed = false;
-        if (!installed) {
-            installed = true;
-            qApp->installNativeEventFilter(new FramelessFrameFilter(hwnd));
-        }
-    });
+    FramelessResizeFilter::ensureResizeFrame(reinterpret_cast<HWND>(window->winId()));
+    qApp->installNativeEventFilter(new FramelessResizeFilter(window));
 #endif
 
-    QObject::connect(qApp, &QApplication::aboutToQuit, window, [window] {
+    // Closing hides to the tray, so MainWindow never saves its own geometry:
+    // remember ours both when hiding and when quitting.
+    const auto saveWindowGeometry = [window] {
         auto* settings = APPLICATION->settings();
         settings->set(QStringLiteral("BerryWindowMaximized"), window->isMaximized());
-        if (!window->isMaximized() && !window->isMinimized())
-            settings->set(QStringLiteral("BerryWindowSize"), window->size());
-    });
+        if (!window->isMaximized() && !window->isMinimized() && window->isVisible()) {
+            const QRect geometry = window->geometry();
+            settings->set(QStringLiteral("BerryWindowGeometry"),
+                          QStringLiteral("%1,%2,%3,%4")
+                              .arg(geometry.x())
+                              .arg(geometry.y())
+                              .arg(geometry.width())
+                              .arg(geometry.height()));
+        }
+    };
+    QObject::connect(qApp, &QApplication::aboutToQuit, window, saveWindowGeometry);
 
     if (!g_tray && QSystemTrayIcon::isSystemTrayAvailable()) {
         qApp->setQuitOnLastWindowClosed(false);
@@ -3233,7 +3293,7 @@ void installSoloUi(QMainWindow* window)
                                  restore();
                          });
         g_tray->show();
-        window->installEventFilter(new TrayFilter(window, g_tray));
+        window->installEventFilter(new TrayFilter(window, g_tray, saveWindowGeometry));
         QObject::connect(qApp, &QApplication::aboutToQuit, window, [] {
             if (g_tray) g_tray->hide();
         });
