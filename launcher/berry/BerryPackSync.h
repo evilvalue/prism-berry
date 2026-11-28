@@ -51,6 +51,10 @@ class PackSync : public QObject {
         /// True when the pack's copy is written next to an edited player file
         /// ("config/x.toml" -> "config/x.toml.new") instead of over it.
         bool sidecar = false;
+        /// Set for the jar a ".pw.toml" metafile points at: it is not an index
+        /// entry, but the state file has to remember it anyway, or a mod the
+        /// pack drops could never be found on disk again.
+        bool fromMetafile = false;
         /// File to write, relative to the game root.
         QString diskPath;
         QUrl url;
@@ -64,6 +68,9 @@ class PackSync : public QObject {
         QStringList satisfied;
         QVector<Job> jobs;
         QStringList errors;
+        /// Files the pack shipped once and no longer lists, still byte-identical
+        /// to what was installed: leftovers of a removed mod, not the player's.
+        QStringList removed;
     };
 
     struct MetafileResult {
@@ -84,11 +91,19 @@ class PackSync : public QObject {
         bool metafile = false;
     };
 
+    /// What the pack installed last time. The hash format travels with the
+    /// hash: a file the current manifest no longer lists has no other way to
+    /// be verified before it is deleted.
+    struct SavedFile {
+        QString hashFormat = QStringLiteral("sha256");
+        QByteArray hash;
+    };
+
     void fetchIndex();
     void parseIndex(const QByteArray& data);
     void scanLocalFiles();
     static Plan buildPlan(const QString& root, const QHash<QString, Entry>& entries,
-                          const QHash<QString, QByteArray>& state);
+                          const QHash<QString, SavedFile>& state);
     void enqueue(const Job& job);
     void startNextDownloads();
     void startDownload(const Job& job);
@@ -109,7 +124,9 @@ class PackSync : public QObject {
     static QByteArray hashFile(const QString& path, const QString& format);
 
     QHash<QString, Entry> m_entries;
-    QHash<QString, QByteArray> m_state;
+    QHash<QString, SavedFile> m_state;
+    /// Metafile payloads (jars) installed during this pass, for saveState().
+    QHash<QString, SavedFile> m_installed;
     QString m_statePath;
     QQueue<Job> m_queue;
     QSet<QNetworkReply*> m_replies;

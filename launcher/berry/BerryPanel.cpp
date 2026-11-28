@@ -2665,6 +2665,17 @@ QWidget* Panel::buildSettings()
     auto* reset = button(tr("Сбросить конфиги"), actionsCard, PixelButton::Normal, gTrash());
     reset->setMinimumHeight(38);
     connect(reset, &QPushButton::clicked, this, [this] {
+        if (m_instance && m_instance->isRunning()) {
+            m_settingsStatus->setText(tr("Сначала закрой Minecraft — при выходе игра перезапишет конфиги."));
+            return;
+        }
+        const auto answer = QMessageBox::question(this, tr("Сбросить конфиги"),
+                                                  tr("Настройки модов, графики и управления вернутся к нашим. "
+                                                     "Текущие файлы сохранятся в папке инстанса. Продолжить?"),
+                                                  QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes)
+            return;
+
         const QString backup = Tweaks::resetConfigs();
         if (backup.isEmpty()) {
             m_settingsStatus->setText(tr("Не удалось сбросить конфиги."));

@@ -52,7 +52,7 @@ rR7GdiO9Rc1JRuaBp2/Od2ROspsp2tQYZRAoG57aWw==
 // Used only if the mod was not updated yet: the relay, then bare HTTP.
 constexpr auto AuthApiUrl = "https://berrytrip-auth-relay-6lacmy-preview.freebuff.site";
 constexpr auto AuthApiDirectUrl = "http://135.181.126.167:25712";
-constexpr auto LauncherVersion = "0.7.17";
+constexpr auto LauncherVersion = "0.7.18";
 }  // namespace
 
 QString Config::version()

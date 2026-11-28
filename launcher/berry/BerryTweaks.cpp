@@ -460,6 +460,10 @@ QString Tweaks::resetConfigs()
             QFile::copy(path, QDir(backup).filePath(file));
             QFile::remove(path);
         }
+        // Copies the pack left behind for an edited config are stale now too.
+        const QString sidecar = path + QStringLiteral(".new");
+        if (QFileInfo::exists(sidecar))
+            QFile::remove(sidecar);
     }
     for (const QString& dir : dirs) {
         const QString path = QDir(root).filePath(dir);

@@ -83,6 +83,36 @@ bool isPlayerOwnedPath(const QString& path)
     }
     return false;
 }
+
+/// Player data that the pack may once have shipped but must never take away:
+/// worlds, screenshots and logs are the player's own files by definition.
+bool isPlayerDataPath(const QString& path)
+{
+    static const QStringList prefixes{
+        QStringLiteral("saves/"),       QStringLiteral("screenshots/"), QStringLiteral("logs/"),
+        QStringLiteral("crash-reports/"), QStringLiteral("local/"),       QStringLiteral("Distant_Horizons_server_data/"),
+    };
+    const QString lower = path.toLower();
+    for (const QString& prefix : prefixes) {
+        if (lower.startsWith(prefix))
+            return true;
+    }
+    return false;
+}
+
+/// The only configs the pack is allowed to overwrite on update: those of the
+/// mods we ship ourselves (berryauth and friends). Everything else under
+/// config/ belongs to the player once the pack has installed it the first time.
+bool isBerryOwnedConfig(const QString& path)
+{
+    const QString lower = path.toLower();
+    if (!lower.startsWith(QLatin1String("config/")))
+        return false;
+    // The token and the pending link are player credentials, not settings.
+    if (lower.contains(QLatin1String("token")) || lower.contains(QLatin1String("link")))
+        return false;
+    return lower.startsWith(QLatin1String("config/berryauth")) || lower.startsWith(QLatin1String("config/berrytrip"));
+}
 }
 
 PackSync::PackSync(QObject* parent) : QObject(parent) {}
@@ -99,6 +129,7 @@ void PackSync::start()
     }
 
     m_entries.clear();
+    m_installed.clear();
     m_queue.clear();
     m_queuedPaths.clear();
     m_doneEntries.clear();
@@ -231,6 +262,8 @@ void PackSync::scanLocalFiles()
 
         for (const QString& error : plan.errors)
             fail(error);
+        for (const QString& path : plan.removed)
+            qInfo().noquote() << QStringLiteral("BerryTrip sync: удалён %1").arg(path);
         for (const QString& path : plan.satisfied)
             completeEntry(path);
         for (const Job& job : plan.jobs)
@@ -246,7 +279,7 @@ void PackSync::scanLocalFiles()
 }
 
 PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Entry>& entries,
-                                   const QHash<QString, QByteArray>& state)
+                                   const QHash<QString, SavedFile>& state)
 {
     Plan plan;
     QSet<QString> queued;
@@ -265,14 +298,15 @@ PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Ent
         const QString path = QDir(root).filePath(it.key());
         if (isPlayerOwnedPath(it.key()) && QFileInfo::exists(path)) {
             const QByteArray local = hashFile(path, it->hashFormat);
-            // Still what the pack installed last time, so the player never
-            // touched it: the pack is allowed to update it in place.
             const auto previous = state.constFind(it.key());
-            const bool untouched = previous != state.cend() && previous.value() == local;
+            const bool untouched = previous != state.cend() && previous->hashFormat == it->hashFormat &&
+                                   previous->hash == local;
             plan.satisfied.append(it.key());
 
             if (local != it->hash) {
-                if (untouched) {
+                if (isBerryOwnedConfig(it.key())) {
+                    // Our own mods' settings follow the pack: they are ours to
+                    // change, not the player's.
                     Job job;
                     job.kind = Job::Kind::Blob;
                     job.entryPath = it.key();
@@ -281,7 +315,7 @@ PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Ent
                     job.hashFormat = it->hashFormat;
                     job.hash = it->hash;
                     add(job);
-                } else {
+                } else if (!untouched) {
                     // Edited by the player: keep their file and drop the pack's
                     // version next to it as "<file>.new".
                     const QString sidecarPath = it.key() + QStringLiteral(".new");
@@ -353,6 +387,32 @@ PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Ent
         job.hashFormat = it->hashFormat;
         job.hash = it->hash;
         add(job);
+    }
+
+    // Files the pack shipped once and silently stopped listing. Only a file
+    // still byte-identical to what the pack installed is removed: a jar the
+    // player replaced with another version is theirs now, and configs are never
+    // removed at all (the player tunes them).
+    for (auto it = state.cbegin(); it != state.cend(); ++it) {
+        if (entries.contains(it.key()) || !isSafeRelativePath(it.key()))
+            continue;
+        if (isPlayerDataPath(it.key()))
+            continue;
+        if (isPlayerOwnedPath(it.key()) && !isBerryOwnedConfig(it.key()))
+            continue;
+
+        const QString full = QDir(root).filePath(it.key());
+        if (!QFileInfo::exists(full))
+            continue;
+        if (hashFile(full, it->hashFormat) != it->hash)
+            continue;
+        if (QFile::remove(full))
+            plan.removed.append(it.key());
+
+        // The pack's copy of an edited config lives next to it as ".new".
+        const QString sidecar = full + QStringLiteral(".new");
+        if (QFileInfo::exists(sidecar) && hashFile(sidecar, it->hashFormat) == it->hash)
+            QFile::remove(sidecar);
     }
 
     return plan;
@@ -460,10 +520,15 @@ void PackSync::onReplyFinished(QNetworkReply* reply, const Job& job, QSaveFile* 
         return;
     }
 
-    if (job.kind == Job::Kind::Metafile)
+    if (job.kind == Job::Kind::Metafile) {
         onMetafileInstalled(job, QDir(m_root).filePath(job.diskPath));
-    else
+    } else {
+        // Remember the jar itself, not only its metafile: that is what lets a
+        // later sync delete a mod the pack dropped.
+        if (job.fromMetafile)
+            m_installed.insert(job.diskPath, { job.hashFormat, job.hash });
         completeEntry(job.entryPath);
+    }
 
     startNextDownloads();
     maybeFinish();
@@ -592,6 +657,7 @@ bool PackSync::readMetafile(const QString& localPath, const QString& metafilePat
     const QString fileName = QString::fromStdString(*filename);
 
     payload->kind = Job::Kind::Blob;
+    payload->fromMetafile = true;
     payload->diskPath = (dir.isEmpty() || dir == QLatin1String(".")) ? fileName : dir + QLatin1Char('/') + fileName;
     if (!isSafeRelativePath(payload->diskPath)) {
         *error = QStringLiteral("файл мода лежит вне папки игры");
@@ -642,17 +708,38 @@ void PackSync::loadState()
         return;
     const auto json = QJsonDocument::fromJson(file.readAll()).object();
     const auto files = json.value(QStringLiteral("files")).toObject();
-    for (auto it = files.begin(); it != files.end(); ++it)
-        m_state.insert(it.key(), QByteArray::fromHex(it.value().toString().toLatin1()));
+    for (auto it = files.begin(); it != files.end(); ++it) {
+        const QString value = it.value().toString();
+        SavedFile saved;
+        // Version 1 wrote bare sha256 hex; version 2 prefixes the format so a
+        // file dropped from the manifest can still be verified.
+        const int colon = value.indexOf(QLatin1Char(':'));
+        if (colon > 0) {
+            saved.hashFormat = value.left(colon);
+            saved.hash = QByteArray::fromHex(value.mid(colon + 1).toLatin1());
+        } else {
+            saved.hash = QByteArray::fromHex(value.toLatin1());
+        }
+        if (!saved.hash.isEmpty())
+            m_state.insert(it.key(), saved);
+    }
 }
 
 void PackSync::saveState()
 {
     QJsonObject files;
+    const auto put = [&files](const QString& path, const QString& format, const QByteArray& hash) {
+        files.insert(path, format + QLatin1Char(':') + QString::fromLatin1(hash.toHex()));
+    };
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
-        files.insert(it.key(), QString::fromLatin1(it->hash.toHex()));
+        put(it.key(), it->hashFormat, it->hash);
+    for (auto it = m_installed.cbegin(); it != m_installed.cend(); ++it) {
+        if (!m_entries.contains(it.key()))
+            put(it.key(), it->hashFormat, it->hash);
+    }
+
     QJsonObject root;
-    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("version"), 2);
     root.insert(QStringLiteral("files"), files);
 
     QSaveFile file(m_statePath);
