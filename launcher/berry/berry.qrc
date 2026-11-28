@@ -2,6 +2,7 @@
 <RCC version="1.0">
     <qresource prefix="/berry">
         <file alias="MinecraftRus.ttf">resources/MinecraftRus.ttf</file>
+        <file alias="app-icon.png">resources/app-icon.png</file>
         <file alias="DistantHorizons.toml">resources/DistantHorizons.toml</file>
         <file alias="berry.png">resources/berry.png</file>
         <file alias="check.png">resources/check.png</file>

@@ -86,5 +86,15 @@ void inset(QPainter& painter, const QRect& rect, const QColor& fill, const QColo
 /// Applies the pixel look to the panel and everything inside it.
 void apply(QWidget* root);
 
+/// Applies the same pixel look to the whole application (dialogs, menus,
+/// Prism leftovers). Call once from the application entry point.
+void applyApplication();
+
+/// True reference to the bundled old BerryTrip icon.
+QIcon appIcon();
+
+/// Elides text to fit pixelSize with Minecraft Rus (wide metrics).
+QString elide(const QString& text, int pixelSize, qreal spacing, int maxWidth);
+
 }  // namespace theme
 }  // namespace berry

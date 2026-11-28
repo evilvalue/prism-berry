@@ -9,9 +9,13 @@
 
 #include "berry/BerryTheme.h"
 
+#include <QApplication>
 #include <QFontDatabase>
+#include <QFontMetrics>
 #include <QPainter>
+#include <QPalette>
 #include <QPixmap>
+#include <QStyleFactory>
 #include <QStringList>
 #include <QWidget>
 
@@ -58,8 +62,11 @@ QString family()
 QFont regular(int pixelSize)
 {
     init();
+    // Minecraft Rus metrics are huge (1em ~ 4x pixel grid). Clamp so callers
+    // can pass design sizes without blowing out every layout.
+    const int px = qBound(8, pixelSize, 16);
     QFont font(g_family);
-    font.setPixelSize(pixelSize);
+    font.setPixelSize(px);
     font.setStyleStrategy(QFont::NoAntialias);
     return font;
 }
@@ -67,8 +74,9 @@ QFont regular(int pixelSize)
 QFont semiBold(int pixelSize)
 {
     init();
+    const int px = qBound(8, pixelSize, 16);
     QFont font(g_familySemi);
-    font.setPixelSize(pixelSize);
+    font.setPixelSize(px);
     font.setBold(true);
     font.setStyleStrategy(QFont::NoAntialias);
     return font;
@@ -77,10 +85,12 @@ QFont semiBold(int pixelSize)
 QFont spaced(int pixelSize, qreal spacing, bool bold)
 {
     init();
+    const int px = qBound(8, pixelSize, 16);
+    const qreal sp = qBound<qreal>(0.0, spacing, 0.6);
     QFont font(g_familySemi);
-    font.setPixelSize(pixelSize);
+    font.setPixelSize(px);
     font.setBold(bold);
-    font.setLetterSpacing(QFont::AbsoluteSpacing, spacing);
+    font.setLetterSpacing(QFont::AbsoluteSpacing, sp);
     font.setStyleStrategy(QFont::NoAntialias);
     return font;
 }
@@ -217,6 +227,86 @@ void inset(QPainter& painter, const QRect& rect, const QColor& fill, const QColo
     painter.fillRect(QRect(inner.left(), inner.top(), 1, inner.height()), mix(fill, Qt::black, 55));
 }
 
+QIcon appIcon()
+{
+    QIcon icon(QStringLiteral(":/berry/app-icon.png"));
+    if (icon.isNull())
+        return QIcon(QStringLiteral(":/berry/berry.png"));
+    return icon;
+}
+
+QString elide(const QString& text, int pixelSize, qreal spacing, int maxWidth)
+{
+    if (maxWidth <= 0 || text.isEmpty())
+        return text;
+    const QFontMetrics metrics(spaced(pixelSize, spacing, true));
+    return metrics.elidedText(text, Qt::ElideRight, maxWidth);
+}
+
+void applyApplication()
+{
+    init();
+    if (auto* app = qApp) {
+        // Force a flat dark base so no Prism/Breeze theme flashes through.
+        if (QStyleFactory::create(QStringLiteral("Fusion")))
+            app->setStyle(QStyleFactory::create(QStringLiteral("Fusion")));
+        QPalette pal;
+        pal.setColor(QPalette::Window, Bg);
+        pal.setColor(QPalette::WindowText, Fg);
+        pal.setColor(QPalette::Base, BgDeep);
+        pal.setColor(QPalette::AlternateBase, Surface);
+        pal.setColor(QPalette::Text, Fg);
+        pal.setColor(QPalette::Button, Surface);
+        pal.setColor(QPalette::ButtonText, Fg);
+        pal.setColor(QPalette::Highlight, Accent);
+        pal.setColor(QPalette::HighlightedText, OnAccent);
+        pal.setColor(QPalette::ToolTipBase, Surface);
+        pal.setColor(QPalette::ToolTipText, Fg);
+        pal.setColor(QPalette::Disabled, QPalette::WindowText, Dim);
+        pal.setColor(QPalette::Disabled, QPalette::Text, Dim);
+        app->setPalette(pal);
+        app->setFont(regular(12));
+        app->setWindowIcon(appIcon());
+        // Never show native file dialogs: the Qt dialog is styled pixel-wise.
+        app->setStyleSheet(app->styleSheet() + QStringLiteral(R"(
+QDialog, QMessageBox, QFileDialog, QWizard, QProgressDialog { background: #0A0D12; color: #F2F5FA; border: 2px solid #333D4E; }
+QDialog QLabel, QMessageBox QLabel { color: #F2F5FA; }
+QDialog QPushButton, QMessageBox QPushButton, QFileDialog QPushButton {
+  background: #151A22; border: 2px solid #333D4E; color: #F2F5FA; padding: 6px 12px; min-height: 24px; }
+QDialog QPushButton:hover, QMessageBox QPushButton:hover, QFileDialog QPushButton:hover { background: #1D2430; border-color: #FF4F79; }
+QDialog QPushButton:pressed, QMessageBox QPushButton:pressed { background: #0A0D12; }
+QDialog QPushButton:disabled, QMessageBox QPushButton:disabled { color: #4C5566; }
+QMenu { background: #151A22; border: 2px solid #333D4E; color: #F2F5FA; padding: 4px; }
+QMenu::item { padding: 5px 22px 5px 18px; }
+QMenu::item:selected, QMenu::item:hover { background: #FF4F79; color: #14070C; }
+QMenu::separator { height: 1px; background: #222A37; margin: 4px 8px; }
+QMenu::disabled { color: #4C5566; }
+QToolBar { background: #0C1016; border: none; border-bottom: 2px solid #1A212B; spacing: 4px; padding: 4px; }
+QToolBar QToolButton { background: transparent; border: 1px solid transparent; padding: 5px; }
+QToolBar QToolButton:hover { background: #151A22; border: 1px solid #333D4E; }
+QStatusBar { background: #0C1016; color: #8C98AC; border-top: 2px solid #1A212B; }
+QDockWidget { background: #0A0D12; border: 2px solid #333D4E; titlebar-close-icon: none; }
+QDockWidget::title { background: #0C1016; color: #F2F5FA; padding: 4px; text-align: left; }
+QGroupBox { border: 2px solid #333D4E; margin-top: 10px; padding-top: 8px; color: #F2F5FA; }
+QGroupBox::title { subcontrol-origin: margin; left: 8px; }
+QComboBox, QTextEdit, QPlainTextEdit, QTextBrowser, QTreeWidget, QTreeView, QTableWidget, QTableView {
+  background: #07090D; border: 2px solid #333D4E; color: #F2F5FA; selection-background-color: #FF4F79; selection-color: #14070C; }
+QComboBox:focus, QTextEdit:focus, QPlainTextEdit:focus { border-color: #FF4F79; }
+QComboBox QAbstractItemView { background: #151A22; border: 2px solid #333D4E; selection-background-color: #FF4F79; selection-color: #14070C; }
+QRadioButton, QCheckBox { color: #F2F5FA; }
+QRadioButton::indicator, QCheckBox::indicator { width: 14px; height: 14px; border: 2px solid #333D4E; background: #07090D; }
+QRadioButton::indicator:checked, QCheckBox::indicator:checked { background: #FF4F79; }
+QTabWidget::pane { border: 2px solid #333D4E; background: #0A0D12; }
+QTabBar::tab { background: #0C1016; color: #9EA9BC; border: 2px solid #222A37; padding: 6px 12px; }
+QTabBar::tab:selected { background: #151A22; color: #F2F5FA; border-bottom-color: #151A22; }
+QHeaderView::section { background: #0C1016; color: #9EA9BC; border: 1px solid #222A37; padding: 4px; }
+QSplitter::handle { background: #222A37; }
+QToolTip { background: #151A22; color: #F2F5FA; border: 2px solid #FF4F79; padding: 4px 6px; }
+QFileSystemModel { background: #07090D; color: #F2F5FA; }
+)"));
+    }
+}
+
 void apply(QWidget* root)
 {
     init();
@@ -230,14 +320,14 @@ QWidget { color: #F2F5FA; }
 QLabel { background: transparent; color: #F2F5FA; }
 QLabel:disabled { color: #4C5566; }
 
-QLabel#berryDisplay { color: #F7FAFF; font-size: 38px; }
-QLabel#berryTitle { color: #F7FAFF; font-size: 26px; }
-QLabel#berryH1 { color: #F5F8FD; font-size: 16px; }
-QLabel#berryH2 { color: #F5F8FD; font-size: 12px; }
-QLabel#berryCaption { color: #7E8A9E; font-size: 10px; }
-QLabel#berryMuted { color: #A7B2C4; font-size: 12px; }
-QLabel#berryDim { color: #77839A; font-size: 11px; }
-QLabel#berryMono { color: #B9C4D6; font-size: 11px; }
+QLabel#berryDisplay { color: #F7FAFF; font-size: 16px; }
+QLabel#berryTitle { color: #F7FAFF; font-size: 14px; }
+QLabel#berryH1 { color: #F5F8FD; font-size: 12px; }
+QLabel#berryH2 { color: #F5F8FD; font-size: 10px; }
+QLabel#berryCaption { color: #7E8A9E; font-size: 8px; }
+QLabel#berryMuted { color: #A7B2C4; font-size: 10px; }
+QLabel#berryDim { color: #77839A; font-size: 9px; }
+QLabel#berryMono { color: #B9C4D6; font-size: 9px; }
 QLabel#berryAccent { color: #FF5D86; }
 QLabel#berryOk { color: #52E39C; }
 QLabel#berryWarn { color: #FFC24B; }

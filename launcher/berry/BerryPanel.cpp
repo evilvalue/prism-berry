@@ -38,6 +38,7 @@
 #include <QWizard>
 #include <QMainWindow>
 #include <QMenu>
+#include <QMouseEvent>
 #include <QMenuBar>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -106,6 +107,35 @@ class OverlayFilter : public QObject {
 
    private:
     QWidget* m_overlay;
+};
+
+/// Drags the frameless window from the pixel top bar; double-click toggles maximize.
+class TitleDragFilter : public QObject {
+   public:
+    explicit TitleDragFilter(Panel* panel, QObject* parent = nullptr) : QObject(parent), m_panel(panel) {}
+   protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() == QEvent::MouseButtonPress) {
+            auto* e = static_cast<QMouseEvent*>(event);
+            if (e->button() == Qt::LeftButton) { m_drag = e->globalPosition().toPoint() - m_panel->window()->pos(); m_down = true; }
+        } else if (event->type() == QEvent::MouseMove && m_down) {
+            auto* e = static_cast<QMouseEvent*>(event);
+            m_panel->window()->move(e->globalPosition().toPoint() - m_drag);
+            return true;
+        } else if (event->type() == QEvent::MouseButtonRelease) {
+            m_down = false;
+        } else if (event->type() == QEvent::MouseButtonDblClick) {
+            auto* w = m_panel->window();
+            if (w->isMaximized()) w->showNormal(); else w->showMaximized();
+            return true;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+   private:
+    Panel* m_panel;
+    QPoint m_drag;
+    bool m_down = false;
 };
 
 class PopupFilter : public QObject {
@@ -621,7 +651,8 @@ class PixelButton : public QPushButton {
             return QSize(40, 40);
         const int iconWidth = m_glyph.isEmpty() ? 0 : 22;
         const int height = m_variant == Segment ? 32 : m_variant == Ghost ? 36 : 40;
-        return QSize(textWidth + iconWidth + 32, height);
+        // cap so long labels never blow the layout; paint elides the rest
+        return QSize(qMin(textWidth + iconWidth + 32, 360), height);
     }
 
     QSize minimumSizeHint() const override { return sizeHint(); }
@@ -728,8 +759,9 @@ class PixelButton : public QPushButton {
         if (!text().isEmpty() && m_variant != Icon) {
             painter.setFont(font());
             painter.setPen(label);
+            const QString shown = QFontMetrics(font()).elidedText(text(), Qt::ElideRight, body.right() - x - 6);
             painter.drawText(QRect(x, body.top(), body.right() - x - 6, body.height()), Qt::AlignVCenter | Qt::AlignLeft,
-                             text());
+                             shown);
         }
 
         if (hasFocus()) {
@@ -907,7 +939,7 @@ class PixelTab : public QPushButton {
         setAttribute(Qt::WA_Hover, true);
         setFont(theme::spaced(11, 0.8, true));
         setFixedHeight(52);
-        setMinimumWidth(126);
+        setMinimumWidth(132);
         setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     }
 
@@ -941,8 +973,9 @@ class PixelTab : public QPushButton {
 
         painter.setFont(font());
         painter.setPen(active ? theme::Fg : hovered ? theme::Fg : theme::Dim);
+        const QString shown = QFontMetrics(font()).elidedText(text(), Qt::ElideRight, area.right() - x - 6);
         painter.drawText(QRect(x, area.top(), area.right() - x - 6, area.height()), Qt::AlignVCenter | Qt::AlignLeft,
-                         text());
+                         shown);
     }
 
    private:
@@ -971,7 +1004,8 @@ const Tone ToneMuted{ theme::Muted, QColor(0x12, 0x16, 0x1D), theme::LineSoft };
 void setChip(QLabel* label, const QString& text, const Tone& tone)
 {
     label->setText(text);
-    label->setFont(theme::spaced(9, 1.1, true));
+    label->setWordWrap(false);
+    label->setFont(theme::spaced(8, 0.4, true));
     label->setStyleSheet(QStringLiteral("color:%1; background:%2; border:2px solid %3; padding:2px 7px;")
                              .arg(tone.fg.name(), tone.bg.name(), tone.border.name()));
 }
@@ -993,7 +1027,8 @@ QLabel* caption(const QString& text, QWidget* parent)
 {
     auto* label = new QLabel(text, parent);
     label->setObjectName(QStringLiteral("berryCaption"));
-    label->setFont(theme::spaced(10, 1.2));
+    label->setFont(theme::spaced(8, 0.4));
+    label->setWordWrap(true);
     return label;
 }
 
@@ -1001,7 +1036,8 @@ QLabel* sectionLabel(const QString& text, QWidget* parent)
 {
     auto* label = new QLabel(text, parent);
     label->setObjectName(QStringLiteral("berryH2"));
-    label->setFont(theme::spaced(12, 0.6, true));
+    label->setFont(theme::spaced(10, 0.3, true));
+    label->setWordWrap(true);
     return label;
 }
 
@@ -1054,7 +1090,8 @@ QWidget* pageHeader(QWidget* parent, const QString& eyebrow, const QString& titl
 
     auto* heading = new QLabel(title, wrap);
     heading->setObjectName(QStringLiteral("berryTitle"));
-    heading->setFont(theme::spaced(26, 0.6, true));
+    heading->setFont(theme::spaced(14, 0.4, true));
+    heading->setWordWrap(true);
     box->addWidget(heading);
 
     if (!subtitle.isEmpty()) {
@@ -1132,14 +1169,15 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     topRow->setSpacing(14);
 
     auto* logo = new QLabel(top);
-    logo->setPixmap(theme::pixelArt(gLogoSprite(), theme::Accent, 3));
-    logo->setFixedSize(48, 48);
+    logo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(40, 40, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    logo->setFixedSize(40, 40);
+    logo->setScaledContents(true);
     topRow->addWidget(logo, 0, Qt::AlignVCenter);
 
     auto* brand = new QVBoxLayout;
     brand->setSpacing(2);
     auto* wordmark = new QLabel(QStringLiteral("BERRYTRIP"), top);
-    wordmark->setFont(theme::spaced(22, 2.0, true));
+    wordmark->setFont(theme::spaced(13, 0.5, true));
     wordmark->setStyleSheet(QStringLiteral("color:#F7FAFF;"));
     auto* tagline = caption(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), top);
     brand->addWidget(wordmark);
@@ -1154,7 +1192,27 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     auto* licenseChip = new QLabel(top);
     setChip(licenseChip, QStringLiteral("GPL-3.0"), ToneAccent);
     topRow->addWidget(licenseChip, 0, Qt::AlignVCenter);
+    // custom window frame: pixel min / max / close (window is frameless)
+    auto* closeBtn = button(QStringLiteral("X"), top, PixelButton::Ghost, {});
+    closeBtn->setFixedSize(36, 32);
+    closeBtn->setToolTip(tr("Свернуть в трей"));
+    connect(closeBtn, &QPushButton::clicked, this, [this] { window()->hide(); });
+    auto* maxBtn = button(QStringLiteral("+"), top, PixelButton::Ghost, {});
+    maxBtn->setFixedSize(36, 32);
+    maxBtn->setToolTip(tr("Развернуть / свернуть"));
+    connect(maxBtn, &QPushButton::clicked, this, [this] {
+        auto* w = window();
+        if (w->isMaximized()) w->showNormal(); else w->showMaximized();
+    });
+    auto* minBtn = button(QStringLiteral("-"), top, PixelButton::Ghost, {});
+    minBtn->setFixedSize(36, 32);
+    minBtn->setToolTip(tr("Свернуть"));
+    connect(minBtn, &QPushButton::clicked, this, [this] { window()->showMinimized(); });
+    topRow->addWidget(minBtn, 0, Qt::AlignVCenter);
+    topRow->addWidget(maxBtn, 0, Qt::AlignVCenter);
+    topRow->addWidget(closeBtn, 0, Qt::AlignVCenter);
     root->addWidget(top);
+    top->installEventFilter(new TitleDragFilter(this));
 
     // -------------------------------------------------------------------- tabs
     auto* tabs = new QWidget(this);
@@ -1197,16 +1255,18 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     // ------------------------------------------------------------------ footer
     auto* footer = new QFrame(this);
     footer->setObjectName(QStringLiteral("berryFooter"));
-    footer->setFixedHeight(30);
+    footer->setFixedHeight(34);
     auto* footerRow = new QHBoxLayout(footer);
     footerRow->setContentsMargins(14, 0, 14, 0);
     footerRow->setSpacing(0);
     auto* footLeft = new QLabel(tr("СЕРВЕР %1").arg(Config::serverAddress()), footer);
     footLeft->setObjectName(QStringLiteral("berryFooterCell"));
+    footLeft->setWordWrap(true);
     auto* footMid = new QLabel(QStringLiteral("TELEGRAM · @KILLBERRIESBOT"), footer);
     footMid->setObjectName(QStringLiteral("berryFooterCell"));
     auto* footRight = new QLabel(QStringLiteral("BERRYTRIP %1 · PIXEL UI").arg(Config::version()), footer);
     footRight->setObjectName(QStringLiteral("berryFooterCell"));
+    footRight->setWordWrap(true);
     footerRow->addWidget(footLeft);
     footerRow->addStretch(1);
     footerRow->addWidget(footMid);
@@ -1504,15 +1564,17 @@ QWidget* Panel::buildHome()
     auto* titleRow = new QHBoxLayout;
     titleRow->setSpacing(14);
     auto* heroLogo = new QLabel(hero);
-    heroLogo->setPixmap(theme::pixelArt(gLogoSprite(), theme::Accent, 4));
-    heroLogo->setFixedSize(64, 64);
+    heroLogo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(56, 56, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    heroLogo->setFixedSize(56, 56);
+    heroLogo->setScaledContents(true);
     titleRow->addWidget(heroLogo, 0, Qt::AlignTop);
 
     auto* titleBox = new QVBoxLayout;
     titleBox->setSpacing(2);
     auto* title = new QLabel(QStringLiteral("BERRYTRIP"), hero);
     title->setObjectName(QStringLiteral("berryDisplay"));
-    title->setFont(theme::spaced(34, 2.2, true));
+    title->setFont(theme::spaced(16, 0.5, true));
+    title->setWordWrap(true);
     titleBox->addWidget(title);
     auto* subtitle = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), hero);
     subtitle->setObjectName(QStringLiteral("berryCaption"));
@@ -1527,7 +1589,7 @@ QWidget* Panel::buildHome()
 
     left->addSpacing(8);
     m_play = button(tr("Играть"), hero, PixelButton::Primary, gPlay());
-    m_play->setFont(theme::spaced(17, 1.3, true));
+    m_play->setFont(theme::spaced(12, 0.4, true));
     m_play->setMinimumSize(198, 52);
     m_play->setMaximumHeight(52);
     connect(m_play, &QPushButton::clicked, this, &Panel::onPlay);
@@ -1786,7 +1848,7 @@ QWidget* Panel::buildAccount()
         auto* number = new QLabel(row.first, steps);
         number->setAlignment(Qt::AlignCenter);
         number->setFixedSize(24, 24);
-        number->setFont(theme::spaced(12, 0, true));
+        number->setFont(theme::spaced(10, 0, true));
         number->setStyleSheet(QStringLiteral("color:#FF9DB4; background:#241018; border:2px solid #6E1430;"));
         auto* text = new QLabel(row.second, steps);
         text->setObjectName(QStringLiteral("berryMuted"));
@@ -2071,7 +2133,7 @@ void Panel::refreshSkinPreview(const QString& path)
 void Panel::pickSkin()
 {
     const QString file = QFileDialog::getOpenFileName(this, tr("Скин для Quick Skin"), QString(),
-                                                      tr("Изображения (*.png *.gif)"));
+                                                      tr("Изображения (*.png *.gif)"), nullptr, QFileDialog::DontUseNativeDialog);
     if (file.isEmpty())
         return;
 
@@ -2112,7 +2174,7 @@ void Panel::applySelectedSkin()
 void Panel::pickCape()
 {
     const QString file = QFileDialog::getOpenFileName(this, tr("Плащ для Quick Skin"), QString(),
-                                                      tr("Изображения (*.png *.gif)"));
+                                                      tr("Изображения (*.png *.gif)"), nullptr, QFileDialog::DontUseNativeDialog);
     if (file.isEmpty())
         return;
     QString error;
@@ -2245,7 +2307,7 @@ QWidget* Panel::buildSettings()
     m_memory->setSuffix(tr(" ГБ"));
     m_memory->setMinimumHeight(40);
     m_memory->setAlignment(Qt::AlignCenter);
-    m_memory->setFont(theme::spaced(14, 0.4, true));
+    m_memory->setFont(theme::spaced(11, 0.2, true));
     auto* plus = button(QString(), memoryCard, PixelButton::Icon, gPlus());
     plus->setToolTip(tr("Больше памяти"));
     plus->setAccessibleName(tr("Больше памяти"));
@@ -2273,7 +2335,7 @@ QWidget* Panel::buildSettings()
     auto* browse = button(tr("Обзор…"), javaCard, PixelButton::Normal, gFolder());
     connect(browse, &QPushButton::clicked, this, [this] {
         const QString path = QFileDialog::getOpenFileName(this, tr("Выберите Java"), m_javaPath->text(),
-                                                          QStringLiteral("javaw.exe (javaw.exe);;Все файлы (*)"));
+                                                          QStringLiteral("javaw.exe (javaw.exe);;Все файлы (*)"), nullptr, QFileDialog::DontUseNativeDialog);
         if (path.isEmpty())
             return;
         m_javaPath->setText(QDir::toNativeSeparators(path));
@@ -2413,14 +2475,16 @@ QWidget* Panel::buildAbout()
     headRow->setContentsMargins(18, 14, 18, 18);
     headRow->setSpacing(18);
     auto* logo = new QLabel(head);
-    logo->setPixmap(theme::pixelArt(gLogoSprite(), theme::Accent, 5));
-    logo->setFixedSize(80, 80);
+    logo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(72, 72, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    logo->setFixedSize(72, 72);
+    logo->setScaledContents(true);
     headRow->addWidget(logo, 0, Qt::AlignVCenter);
     auto* text = new QVBoxLayout;
     text->setSpacing(4);
     auto* title = new QLabel(QStringLiteral("BERRYTRIP %1").arg(Config::version()), head);
     title->setObjectName(QStringLiteral("berryTitle"));
-    title->setFont(theme::spaced(24, 1.2, true));
+    title->setFont(theme::spaced(14, 0.4, true));
+    title->setWordWrap(true);
     auto* sub = new QLabel(QStringLiteral("MINECRAFT 1.21.1 · NEOFORGE 21.1.267"), head);
     sub->setObjectName(QStringLiteral("berryCaption"));
     auto* chips = new QHBoxLayout;
@@ -2826,41 +2890,62 @@ void Panel::onPlay()
 
 void installSoloUi(QMainWindow* window)
 {
-    window->menuBar()->hide();
-    window->statusBar()->hide();
-    for (auto* bar : window->findChildren<QToolBar*>())
-        bar->hide();
-    for (auto* dock : window->findChildren<QDockWidget*>())
-        dock->hide();
+    // One window, one tray, one frame. Static guards stop duplicate trays
+    // (5 ghost icons) when MainWindow is ever re-created.
+    static QSystemTrayIcon* g_tray = nullptr;
+    static bool g_filtersInstalled = false;
+    static bool g_applied = false;
 
-    if (auto* central = window->centralWidget())
-        central->hide();
+    if (g_applied)
+        return;
+    g_applied = true;
+
+    theme::applyApplication();
+    window->setWindowIcon(theme::appIcon());
+    window->setWindowTitle(QStringLiteral("BerryTrip %1").arg(Config::version()));
+    // Own pixel frame instead of the native Windows one.
+    window->setWindowFlags((window->windowFlags() & ~Qt::WindowMinimizeButtonHint & ~Qt::WindowMaximizeButtonHint) | Qt::FramelessWindowHint | Qt::Window);
+#ifdef Q_OS_WIN
+    // Keep the old BerryTrip executable icon in the taskbar/Alt-Tab.
+    window->setAttribute(Qt::WA_TranslucentBackground, false);
+#endif
+
+    if (auto* bar = window->menuBar()) { bar->hide(); bar->setVisible(false); }
+    if (auto* bar = window->statusBar()) { bar->hide(); bar->setVisible(false); }
+    for (auto* bar : window->findChildren<QToolBar*>()) { bar->hide(); bar->setVisible(false); bar->deleteLater(); }
+    for (auto* dock : window->findChildren<QDockWidget*>()) { dock->hide(); dock->setVisible(false); dock->deleteLater(); }
+    if (auto* central = window->centralWidget()) { central->hide(); central->setVisible(false); }
+    // Any Prism widget that tries to reshow (toolbars, docks, status) stays hidden.
+    window->setStatusBar(nullptr);
+    window->menuBar()->hide();
 
     auto* panel = new Panel(window);
     panel->setGeometry(window->rect());
     panel->show();
     panel->raise();
 
-    window->installEventFilter(new OverlayFilter(panel, window));
-    qApp->installEventFilter(new PopupFilter(panel, qApp));
+    if (!g_filtersInstalled) {
+        g_filtersInstalled = true;
+        window->installEventFilter(new OverlayFilter(panel, window));
+        qApp->installEventFilter(new PopupFilter(panel, qApp));
+        // Kill Prism leftovers that appear later (plain-text console, etc.)
+        QObject::connect(window, &QWidget::customContextMenuRequested, window, [] {});
+    }
+    QTimer::singleShot(0, window, [panel] { panel->setGeometry(panel->parentWidget()->rect()); });
+
     window->setFixedSize(1240, 760);
 
-    // Keep running when the window goes away: closing it hides BerryTrip to the
-    // tray instead of killing a download or the game that was just launched.
-    // Without a tray the default holds, so closing the last window still quits.
-    if (QSystemTrayIcon::isSystemTrayAvailable()) {
+    if (!g_tray && QSystemTrayIcon::isSystemTrayAvailable()) {
         qApp->setQuitOnLastWindowClosed(false);
-        auto* tray = new QSystemTrayIcon(window);
-        tray->setIcon(QIcon(theme::pixelArt(gLogoSprite(), theme::Accent, 4)));
-        tray->setToolTip(QStringLiteral("BerryTrip %1").arg(Config::version()));
-
+        g_tray = new QSystemTrayIcon(window);
+        g_tray->setIcon(theme::appIcon());
+        g_tray->setToolTip(QStringLiteral("BerryTrip %1").arg(Config::version()));
         auto* menu = new QMenu(window);
         auto* open = menu->addAction(QObject::tr("Открыть"));
         auto* hide = menu->addAction(QObject::tr("Свернуть в трей"));
         menu->addSeparator();
         auto* quit = menu->addAction(QObject::tr("Выход"));
-        tray->setContextMenu(menu);
-
+        g_tray->setContextMenu(menu);
         const auto restore = [window] {
             window->showNormal();
             window->raise();
@@ -2869,13 +2954,18 @@ void installSoloUi(QMainWindow* window)
         QObject::connect(open, &QAction::triggered, window, restore);
         QObject::connect(hide, &QAction::triggered, window, [window] { window->hide(); });
         QObject::connect(quit, &QAction::triggered, qApp, &QApplication::quit);
-        QObject::connect(tray, &QSystemTrayIcon::activated, window,
+        QObject::connect(g_tray, &QSystemTrayIcon::activated, window,
                          [restore](QSystemTrayIcon::ActivationReason reason) {
                              if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick)
                                  restore();
                          });
-        tray->show();
-        window->installEventFilter(new TrayFilter(window, tray));
+        g_tray->show();
+        window->installEventFilter(new TrayFilter(window, g_tray));
+        QObject::connect(qApp, &QApplication::aboutToQuit, window, [] {
+            if (g_tray) g_tray->hide();
+        });
+    } else if (g_tray) {
+        g_tray->show();
     }
 }
 
