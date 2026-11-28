@@ -52,7 +52,7 @@ rR7GdiO9Rc1JRuaBp2/Od2ROspsp2tQYZRAoG57aWw==
 // Used only if the mod was not updated yet: the relay, then bare HTTP.
 constexpr auto AuthApiUrl = "https://berrytrip-auth-relay-6lacmy-preview.freebuff.site";
 constexpr auto AuthApiDirectUrl = "http://135.181.126.167:25712";
-constexpr auto LauncherVersion = "0.7.14";
+constexpr auto LauncherVersion = "0.7.15";
 }  // namespace
 
 QString Config::version()
@@ -143,6 +143,12 @@ QString Config::instanceRoot()
 
 QString Config::gameRoot()
 {
+    // Test hook: lets the update path run against a plain folder, without a
+    // full launcher profile and a provisioned instance.
+    const QString override = qEnvironmentVariable("BERRY_GAME_ROOT");
+    if (!override.isEmpty())
+        return override;
+
     auto* list = APPLICATION ? APPLICATION->instances() : nullptr;
     if (list) {
         if (auto* instance = list->getInstanceById(instanceId()))

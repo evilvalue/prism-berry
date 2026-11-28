@@ -771,13 +771,21 @@ class PixelButton : public QPushButton {
         update();
     }
 
+    /// Some marks (the Telegram plane) are too detailed for the 16x16 pixel
+    /// grid; they draw themselves into the icon slot instead.
+    void setIconPainter(std::function<void(QPainter&, const QRectF&, const QColor&)> painter)
+    {
+        m_painter = std::move(painter);
+        update();
+    }
+
     QSize sizeHint() const override
     {
         const QFontMetrics metrics(font());
         const int textWidth = text().isEmpty() ? 0 : metrics.horizontalAdvance(text());
         if (m_variant == Icon)
             return QSize(40, 40);
-        const int iconWidth = m_glyph.isEmpty() ? 0 : 22;
+        const int iconWidth = (m_painter || !m_glyph.isEmpty()) ? 22 : 0;
         const int height = m_variant == Segment ? 32 : m_variant == Ghost ? 36 : 40;
         // cap so long labels never blow the layout; paint elides the rest
         return QSize(qMin(textWidth + iconWidth + 32, 360), height);
@@ -875,7 +883,11 @@ class PixelButton : public QPushButton {
         }
 
         int x = body.left() + (m_variant == Icon ? 0 : 12);
-        if (!m_glyph.isEmpty()) {
+        if (m_painter) {
+            const QRectF icon(body.left() + 12.0, body.center().y() - 9.0, 18.0, 18.0);
+            m_painter(painter, icon, label);
+            x += 26;
+        } else if (!m_glyph.isEmpty()) {
             const QPixmap pixmap = theme::pixelPixmap(m_glyph, label, 1);
             const int gx = m_variant == Icon ? body.center().x() - pixmap.width() / 2 : x;
             const int gy = body.center().y() - pixmap.height() / 2;
@@ -901,6 +913,7 @@ class PixelButton : public QPushButton {
    private:
     Variant m_variant;
     QStringList m_glyph;
+    std::function<void(QPainter&, const QRectF&, const QColor&)> m_painter;
 };
 
 class PixelFrame : public QFrame {
@@ -1447,6 +1460,9 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     if (!m_instance) {
         m_status->setText(error.isEmpty() ? tr("Не удалось подготовить сборку") : error);
         m_play->setEnabled(false);
+        // Even without a provisioned instance the pack itself can be synced.
+        if (qEnvironmentVariableIsSet("BERRY_GAME_ROOT"))
+            startSync();
         return;
     }
 
@@ -1966,7 +1982,9 @@ QWidget* Panel::buildAccount()
     m_nick->setMinimumHeight(38);
     m_nick->setFont(theme::regular(13));
     nickRow->addWidget(m_nick, 1);
-    m_login = button(tr("Войти через Telegram"), loginCard, PixelButton::Primary, gTelegram());
+    auto* loginButton = button(tr("Войти через Telegram"), loginCard, PixelButton::Primary, {});
+    loginButton->setIconPainter(theme::paintTelegram);
+    m_login = loginButton;
     m_login->setMinimumHeight(38);
     connect(m_login, &QPushButton::clicked, this, &Panel::onAuthClicked);
     nickRow->addWidget(m_login);
@@ -2969,10 +2987,10 @@ void Panel::refreshLaunch()
 
 void Panel::startSync()
 {
-    if (!m_instance || (m_sync && m_sync->isRunning()))
+    if (m_sync && m_sync->isRunning())
         return;
 
-    if (m_instance->isRunning()) {
+    if (m_instance && m_instance->isRunning()) {
         m_status->setText(tr("Сборка обновится после закрытия Minecraft."));
         return;
     }

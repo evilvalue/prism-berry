@@ -74,6 +74,10 @@ QPixmap pixelArt(const QStringList& rows, const QColor& body, int scale = 1);
 /// The same glyph as a crisp icon with 1x/2x/3x variants for scaled displays.
 QIcon pixelIcon(const QStringList& glyph, const QColor& color);
 
+/// Telegram's paper plane as a vector: at 18 px the old 16x16 pixel glyph read
+/// as a diagonal blob, and no pixel pattern this small shows a plane clearly.
+void paintTelegram(QPainter& painter, const QRectF& area, const QColor& color);
+
 /// Channel/ramp helper: mixes two colours on whole RGB steps.
 QColor mix(const QColor& a, const QColor& b, int percent);
 

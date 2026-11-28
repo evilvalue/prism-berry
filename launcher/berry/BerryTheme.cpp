@@ -13,6 +13,7 @@
 #include <QFontDatabase>
 #include <QFontMetrics>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QPixmap>
 #include <QStyleFactory>
@@ -196,6 +197,27 @@ QIcon pixelIcon(const QStringList& glyph, const QColor& color)
     icon.addPixmap(pixelPixmap(glyph, color, 2));
     icon.addPixmap(pixelPixmap(glyph, color, 3));
     return icon;
+}
+
+void paintTelegram(QPainter& painter, const QRectF& area, const QColor& color)
+{
+    // Tip at the upper right, fold below it, tail fin at the lower left.
+    const auto x = [&area](qreal value) { return area.left() + value * area.width(); };
+    const auto y = [&area](qreal value) { return area.top() + value * area.height(); };
+
+    QPainterPath plane;
+    plane.moveTo(x(0.95), y(0.06));
+    plane.lineTo(x(0.04), y(0.49));
+    plane.lineTo(x(0.35), y(0.59));
+    plane.lineTo(x(0.38), y(0.90));
+    plane.lineTo(x(0.58), y(0.70));
+    plane.lineTo(x(0.81), y(0.92));
+    plane.closeSubpath();
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.fillPath(plane, color);
+    painter.restore();
 }
 
 void bevel(QPainter& painter, const QRect& rect, const QColor& fill, const QColor& border, const QColor& highlight,
