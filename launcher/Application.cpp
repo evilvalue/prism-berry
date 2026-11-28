@@ -290,6 +290,81 @@ std::tuple<QDateTime, QString, QString, QString, QString> readLockFile(const QSt
     }
     return std::make_tuple(timestamp, from, to, target, dataPath);
 }
+
+constexpr auto BerryTripFolderName = "BerryTrip";
+
+/// BerryTrip is its own launcher, so it must not write into the data folder
+/// PrismLauncher uses: accounts, instances and settings would mix.
+QString berryTripDataPath()
+{
+    QDir dir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation));
+    if (!dir.cdUp())
+        return {};
+#ifdef Q_OS_WIN32
+    // Qt appends both the organization and the application name on Windows.
+    if (!dir.cdUp())
+        return {};
+#endif
+    return dir.absoluteFilePath(QString::fromLatin1(BerryTripFolderName));
+}
+
+bool folderIsEmpty(const QString& path)
+{
+    QDir dir(path);
+    return dir.entryList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System).isEmpty();
+}
+
+/// True when nothing but BerryTrip's own files lives in the old folder, i.e. a
+/// real PrismLauncher install does not share it.
+bool holdsOnlyBerryTripData(const QString& path)
+{
+    QDir instances(QDir(path).filePath(QStringLiteral("instances")));
+    const auto entries = instances.entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const auto& entry : entries) {
+        if (entry != QLatin1String(BerryTripFolderName))
+            return false;
+    }
+    return !entries.isEmpty() || QFileInfo::exists(QDir(path).filePath(QStringLiteral("berry.ini")));
+}
+
+/// Moves the data of the shared PrismLauncher folder into BerryTrip's own one.
+/// Older builds kept everything next to PrismLauncher's files.
+void takeOverBerryTripData(const QString& from, const QString& to)
+{
+    if (from.isEmpty() || to.isEmpty() || !QDir(from).exists())
+        return;
+    if (QDir(to).exists() && !folderIsEmpty(to))
+        return;
+
+    if (holdsOnlyBerryTripData(from)) {
+        // One rename: instances, assets and libraries come along, so the switch
+        // costs neither disk space nor downloads.
+        if (QDir().rename(from, to)) {
+            qInfo() << "BerryTrip: data folder moved to" << to;
+            return;
+        }
+    }
+
+    // Shared with a real PrismLauncher: take only what BerryTrip owns, the game
+    // runtime is downloaded into the new folder when it is first needed.
+    if (!FS::ensureFolderPathExists(to))
+        return;
+
+    for (const auto& name : { "berry.ini", "accounts.json", "berrytrip.cfg" }) {
+        const QString source = QDir(from).filePath(QString::fromLatin1(name));
+        const QString target = QDir(to).filePath(QString::fromLatin1(name));
+        if (QFileInfo::exists(source) && !QFileInfo::exists(target) && !QFile::copy(source, target))
+            qWarning() << "BerryTrip: could not copy" << source;
+    }
+
+    const QString instances = QDir(to).filePath(QStringLiteral("instances"));
+    const QString source = QDir(from).filePath(QStringLiteral("instances/") + QLatin1String(BerryTripFolderName));
+    const QString target = QDir(instances).filePath(QString::fromLatin1(BerryTripFolderName));
+    if (QDir(source).exists() && !QDir(target).exists() && FS::ensureFolderPathExists(instances) && !QDir().rename(source, target))
+        qWarning() << "BerryTrip: could not move the instance out of the shared PrismLauncher folder";
+
+    qInfo() << "BerryTrip: data folder is now" << to;
+}
 }  // namespace
 
 Application::Application(int& argc, char** argv) : QApplication(argc, argv)
@@ -395,8 +470,9 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         adjustedBy = "System environment";
         dataPath = QDir(dataDirEnv).absolutePath();
     } else {
+        const bool snap = DesktopServices::isSnap();
         QDir foo;
-        if (DesktopServices::isSnap()) {
+        if (snap) {
             foo = QDir(qEnvironmentVariable("SNAP_USER_COMMON"));
         } else {
             foo = QDir(FS::PathCombine(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation), ".."));
@@ -416,6 +492,17 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
             m_portable = true;
         }
 #endif
+
+        // PrismLauncher's folder is not ours: keep our accounts, instances and
+        // settings apart, moving whatever an older build left there.
+        if (!m_portable && !snap) {
+            const QString ownDataPath = berryTripDataPath();
+            if (!ownDataPath.isEmpty()) {
+                takeOverBerryTripData(dataPath, ownDataPath);
+                dataPath = ownDataPath;
+                adjustedBy = "BerryTrip data path";
+            }
+        }
     }
 
     if (!FS::ensureFolderPathExists(dataPath)) {

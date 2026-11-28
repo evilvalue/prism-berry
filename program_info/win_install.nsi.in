@@ -11,11 +11,13 @@ Name "@Launcher_DisplayName@"
 InstallDir "$LOCALAPPDATA\Programs\BerryTrip"
 InstallDirRegKey HKCU "Software\BerryTrip" "InstallDir"
 RequestExecutionLevel user
-OutFile "../@Launcher_CommonName@-Setup.exe"
+OutFile "../BerryTrip-Setup.exe"
 
 !define MUI_ICON "../@Launcher_Branding_ICO@"
 
-!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\@Launcher_CommonName@"
+; BerryTrip must not share PrismLauncher's uninstall entry: writing there would
+; replace the entry of an installed PrismLauncher.
+!define UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\BerryTrip"
 
 ;--------------------------------
 
@@ -376,7 +378,8 @@ Section "@Launcher_DisplayName@"
 
   File "@Launcher_APP_BINARY_NAME@.exe"
   File "@Launcher_APP_BINARY_NAME@_filelink.exe"
-  File "@Launcher_APP_BINARY_NAME@_updater.exe"
+  ; Updates are installed by the launcher itself, no separate updater binary.
+  ; File "@Launcher_APP_BINARY_NAME@_updater.exe"
   File "qt.conf"
   File "qtlogging.ini"
   File *.dll
@@ -389,6 +392,13 @@ Section "@Launcher_DisplayName@"
 
   ; Write the installation path into the registry
   WriteRegStr HKCU Software\BerryTrip "InstallDir" "$INSTDIR"
+
+  ; Older builds (and the 0.7.x test installs) wrote their uninstall entry under
+  ; PrismLauncher's key. Drop it only when it is ours, never the real one.
+  ReadRegStr $0 HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PrismLauncher" "DisplayName"
+  ${If} $0 == "@Launcher_DisplayName@"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\PrismLauncher"
+  ${EndIf}
 
   ; Write the URL Handler into registry for curseforge
   WriteRegStr HKCU Software\Classes\curseforge "URL Protocol" ""
@@ -472,7 +482,7 @@ Section "Uninstall"
 
   nsExec::Exec /TIMEOUT=2000 'TaskKill /IM @Launcher_APP_BINARY_NAME@.exe /F'
 
-  DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\@Launcher_CommonName@"
+  DeleteRegKey HKCU "${UNINST_KEY}"
   DeleteRegKey HKCU SOFTWARE\BerryTrip
 
   Delete $INSTDIR\@Launcher_APP_BINARY_NAME@.exe
