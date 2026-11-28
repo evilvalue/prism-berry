@@ -86,6 +86,8 @@
 
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <windowsx.h>
+#include <QAbstractNativeEventFilter>
 #endif
 
 namespace berry {
@@ -176,6 +178,60 @@ class PopupFilter : public QObject {
    private:
     Panel* m_panel;
 };
+
+#ifdef Q_OS_WIN
+/// A frameless window has no resize border, so the edges are answered here and
+/// the native thick frame installed by installSoloUi does the actual resizing.
+class FramelessFrameFilter : public QAbstractNativeEventFilter {
+   public:
+    explicit FramelessFrameFilter(HWND window) : m_window(window) {}
+
+    bool nativeEventFilter(const QByteArray& eventType, void* message, qintptr* result) override
+    {
+        if (eventType != QByteArrayLiteral("windows_generic_MSG"))
+            return false;
+        auto* msg = static_cast<MSG*>(message);
+        if (msg->hwnd != m_window || msg->message != WM_NCHITTEST)
+            return false;
+        if (::IsZoomed(m_window) || ::IsIconic(m_window))
+            return false;
+
+        const POINT point{ GET_X_LPARAM(msg->lParam), GET_Y_LPARAM(msg->lParam) };
+        RECT rect{};
+        if (!::GetWindowRect(m_window, &rect))
+            return false;
+
+        constexpr int Border = 6;
+        const bool left = point.x >= rect.left && point.x < rect.left + Border;
+        const bool right = point.x <= rect.right && point.x > rect.right - Border;
+        const bool top = point.y >= rect.top && point.y < rect.top + Border;
+        const bool bottom = point.y <= rect.bottom && point.y > rect.bottom - Border;
+
+        if (left && top)
+            *result = HTTOPLEFT;
+        else if (right && top)
+            *result = HTTOPRIGHT;
+        else if (left && bottom)
+            *result = HTBOTTOMLEFT;
+        else if (right && bottom)
+            *result = HTBOTTOMRIGHT;
+        else if (left)
+            *result = HTLEFT;
+        else if (right)
+            *result = HTRIGHT;
+        else if (top)
+            *result = HTTOP;
+        else if (bottom)
+            *result = HTBOTTOM;
+        else
+            return false;
+        return true;
+    }
+
+   private:
+    HWND m_window;
+};
+#endif
 
 /// Keeps Prism's own chrome (menu bar, toolbars, docks, status bar) hidden when
 /// MainWindow or a theme tries to reshow it. Widgets are hidden, never deleted:
@@ -3127,6 +3183,23 @@ void installSoloUi(QMainWindow* window)
     window->move(available.center() - QPoint(target.width() / 2, target.height() / 2));
     if (APPLICATION->settings()->get(QStringLiteral("BerryWindowMaximized")).toBool())
         window->showMaximized();
+
+#ifdef Q_OS_WIN
+    // Give the frameless window real draggable edges (and keep them after the
+    // window is re-shown), otherwise it could only be maximised.
+    QTimer::singleShot(0, window, [window] {
+        const HWND hwnd = reinterpret_cast<HWND>(window->winId());
+        const LONG_PTR style = ::GetWindowLongPtr(hwnd, GWL_STYLE);
+        ::SetWindowLongPtr(hwnd, GWL_STYLE, style | WS_THICKFRAME);
+        ::SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        static bool installed = false;
+        if (!installed) {
+            installed = true;
+            qApp->installNativeEventFilter(new FramelessFrameFilter(hwnd));
+        }
+    });
+#endif
 
     QObject::connect(qApp, &QApplication::aboutToQuit, window, [window] {
         auto* settings = APPLICATION->settings();
