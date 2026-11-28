@@ -14,6 +14,8 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QClipboard>
+#include <QComboBox>
+#include <QGuiApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QDockWidget>
@@ -48,6 +50,10 @@
 #include <QPair>
 #include <QPixmap>
 #include <QProgressBar>
+#include <QLocale>
+#include <QResizeEvent>
+#include <QScreen>
+#include <QSignalBlocker>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSpinBox>
@@ -76,6 +82,7 @@
 #include "minecraft/MinecraftInstance.h"
 #include "minecraft/launch/MinecraftTarget.h"
 #include "settings/SettingsObject.h"
+#include "translations/TranslationsModel.h"
 
 #ifdef Q_OS_WIN
 #include <windows.h>
@@ -118,7 +125,14 @@ class TitleDragFilter : public QObject {
     {
         if (event->type() == QEvent::MouseButtonPress) {
             auto* e = static_cast<QMouseEvent*>(event);
-            if (e->button() == Qt::LeftButton) { m_drag = e->globalPosition().toPoint() - m_panel->window()->pos(); m_down = true; }
+            if (e->button() == Qt::LeftButton) {
+                auto* window = m_panel->window();
+                // Dragging a maximized frameless window must restore it first.
+                if (window->isMaximized())
+                    window->showNormal();
+                m_drag = e->globalPosition().toPoint() - window->pos();
+                m_down = true;
+            }
         } else if (event->type() == QEvent::MouseMove && m_down) {
             auto* e = static_cast<QMouseEvent*>(event);
             m_panel->window()->move(e->globalPosition().toPoint() - m_drag);
@@ -1178,6 +1192,20 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     setPalette(opaque);
     theme::apply(this);
 
+    // Floating notice: Prism errors arrive as message boxes, and hiding those
+    // while the user is on another page used to hide the error completely.
+    m_toast = new QLabel(this);
+    m_toast->setObjectName(QStringLiteral("berryToast"));
+    m_toast->setWordWrap(true);
+    m_toast->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_toast->setStyleSheet(QStringLiteral(
+        "color:#F2F5FA; background:#151A22; border:2px solid #FF4F79; padding:10px 14px;"));
+    m_toast->hide();
+    m_toastTimer = new QTimer(this);
+    m_toastTimer->setSingleShot(true);
+    m_toastTimer->setInterval(7000);
+    connect(m_toastTimer, &QTimer::timeout, m_toast, &QLabel::hide);
+
     m_auth = new TelegramAuth(this);
     m_ping = new ServerPing(this);
     m_updater = new Updater(this);
@@ -1222,7 +1250,13 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     auto* closeBtn = button(QStringLiteral("X"), top, PixelButton::Ghost, {});
     closeBtn->setFixedSize(36, 32);
     closeBtn->setToolTip(tr("Свернуть в трей"));
-    connect(closeBtn, &QPushButton::clicked, this, [this] { window()->hide(); });
+    connect(closeBtn, &QPushButton::clicked, this, [this] {
+        // Without a tray the window could never come back, so closing quits.
+        if (QSystemTrayIcon::isSystemTrayAvailable())
+            window()->hide();
+        else
+            qApp->quit();
+    });
     auto* maxBtn = button(QStringLiteral("+"), top, PixelButton::Ghost, {});
     maxBtn->setFixedSize(36, 32);
     maxBtn->setToolTip(tr("Развернуть / свернуть"));
@@ -2216,11 +2250,86 @@ void Panel::pickCape()
 
 void Panel::notice(const QString& text)
 {
-    if (text.isEmpty() || !m_status)
+    if (text.isEmpty())
+        return;
+    showToast(text);
+    if (!m_status)
         return;
     m_statusBase = text;
     m_status->setText(text);
     m_status->setStyleSheet(QStringLiteral("color:#F5B942;"));
+}
+
+void Panel::showToast(const QString& text)
+{
+    if (!m_toast || text.isEmpty())
+        return;
+    m_toast->setText(text);
+    m_toast->show();
+    repositionToast();
+    if (m_toastTimer)
+        m_toastTimer->start();
+}
+
+void Panel::repositionToast()
+{
+    if (!m_toast || m_toast->isHidden())
+        return;
+    const int width = qMax(240, qMin(this->width() - 80, 760));
+    m_toast->setFixedWidth(width);
+    m_toast->adjustSize();
+    m_toast->setFixedWidth(width);
+    m_toast->move((this->width() - width) / 2, qMax(0, this->height() - m_toast->height() - 52));
+    m_toast->raise();
+}
+
+void Panel::resizeEvent(QResizeEvent* event)
+{
+    QWidget::resizeEvent(event);
+    repositionToast();
+}
+
+void Panel::refreshLanguages(bool allowDownload)
+{
+    if (!m_language || !APPLICATION)
+        return;
+    auto* translations = APPLICATION->translations();
+    if (!translations) {
+        m_language->addItem(tr("Только русский (переводы недоступны)"), QString());
+        return;
+    }
+
+    // The index lives online; ask for it once, then repopulate on modelReset.
+    if (allowDownload) {
+        static bool asked = false;
+        if (!asked) {
+            asked = true;
+            translations->downloadIndex();
+        }
+    }
+
+    const QString current = APPLICATION->settings()->get(QStringLiteral("Language")).toString();
+    const bool systemLocale = APPLICATION->settings()->get(QStringLiteral("UseSystemLocale")).toBool();
+
+    const QSignalBlocker blocker(m_language);
+    m_language->clear();
+    m_language->addItem(tr("Как в системе (%1)").arg(QLocale::system().nativeLanguageName()), QString());
+    for (int row = 0; row < translations->rowCount(); ++row) {
+        const QModelIndex index = translations->index(row, 0);
+        const QString key = translations->data(index, Qt::UserRole).toString();
+        const QString name = translations->data(index, Qt::DisplayRole).toString();
+        if (key.isEmpty() || name.isEmpty())
+            continue;
+        m_language->addItem(name, key);
+    }
+    const int position = m_language->findData(systemLocale ? QString() : current);
+    m_language->setCurrentIndex(position >= 0 ? position : 0);
+
+    if (m_languageHint) {
+        m_languageHint->setText(translations->rowCount() <= 0
+                                    ? tr("Список языков подгрузится, когда появится интернет.")
+                                    : tr("Переводы скачиваются при выборе. Остальное — после перезапуска."));
+    }
 }
 
 QWidget* Panel::buildSettings()
@@ -2379,6 +2488,41 @@ QWidget* Panel::buildSettings()
     javaLayout->addLayout(javaRow);
     right->addWidget(javaCard);
 
+    auto* languageCard = card(content);
+    auto* languageLayout = new QVBoxLayout(languageCard);
+    languageLayout->setContentsMargins(18, 14, 18, 16);
+    languageLayout->setSpacing(8);
+    languageLayout->addWidget(caption(tr("ЯЗЫК ИНТЕРФЕЙСА"), languageCard));
+    m_language = new QComboBox(languageCard);
+    m_language->setMinimumHeight(38);
+    m_language->setMaxVisibleItems(14);
+    m_language->setCursor(Qt::PointingHandCursor);
+    connect(m_language, &QComboBox::currentIndexChanged, this, [this](int) {
+        if (m_loading || !m_language)
+            return;
+        auto* translations = APPLICATION->translations();
+        const QString key = m_language->currentData().toString();
+        if (key.isEmpty()) {
+            APPLICATION->settings()->set(QStringLiteral("UseSystemLocale"), true);
+            if (translations)
+                translations->selectLanguage(QLocale::system().name());
+            m_settingsStatus->setText(tr("Язык: как в системе. Применится после перезапуска лаунчера."));
+            return;
+        }
+        if (!translations)
+            return;
+        APPLICATION->settings()->set(QStringLiteral("UseSystemLocale"), false);
+        translations->selectLanguage(key);
+        translations->updateLanguage(key);
+        m_settingsStatus->setText(tr("Язык сохранён. Применится после перезапуска лаунчера."));
+    });
+    languageLayout->addWidget(m_language);
+    m_languageHint = new QLabel(languageCard);
+    m_languageHint->setObjectName(QStringLiteral("berryDim"));
+    m_languageHint->setWordWrap(true);
+    languageLayout->addWidget(m_languageHint);
+    right->addWidget(languageCard);
+
     auto* actionsCard = card(content);
     auto* actionsLayout = new QVBoxLayout(actionsCard);
     actionsLayout->setContentsMargins(18, 14, 18, 16);
@@ -2410,6 +2554,10 @@ QWidget* Panel::buildSettings()
 
     layout->addLayout(columns);
     layout->addStretch(1);
+
+    if (auto* translations = APPLICATION->translations())
+        connect(translations, &QAbstractItemModel::modelReset, this, [this] { refreshLanguages(false); });
+    refreshLanguages(true);
 
     return page(content);
 }
@@ -2617,6 +2765,8 @@ void Panel::goToPage(int index)
         refreshAuth();
     if (index == 2)
         refreshSkins();
+    if (index == 3)
+        refreshLanguages(false);
     if (index == 4)
         refreshDiagnostics();
 }
@@ -2911,7 +3061,7 @@ void Panel::onPlay()
     Tweaks::applyAll();
     auto target = std::make_shared<MinecraftTarget>(MinecraftTarget::parse(Config::serverAddress(), false));
     if (!APPLICATION->launch(m_instance, LaunchMode::Normal, target))
-        m_status->setText(tr("Запуск не удался — проверь аккаунт и Java"));
+        notice(tr("Запуск не удался — проверь аккаунт и Java."));
 }
 
 void installSoloUi(QMainWindow* window)
@@ -2962,7 +3112,28 @@ void installSoloUi(QMainWindow* window)
     }
     QTimer::singleShot(0, window, [panel] { panel->setGeometry(panel->parentWidget()->rect()); });
 
-    window->setFixedSize(1240, 760);
+    // Fit the pixel window to the real screen. The old fixed 1240x760 was
+    // taller than the work area on 1366x768, so the footer and the play area
+    // were cut off, and a fixed size also made maximise do nothing.
+    const QRect available = window->screen() ? window->screen()->availableGeometry() : QRect(0, 0, 1280, 800);
+    QSize target(1240, 760);
+    const QVariant savedSize = APPLICATION->settings()->get(QStringLiteral("BerryWindowSize"));
+    if (savedSize.isValid() && savedSize.toSize().isValid() && !savedSize.toSize().isEmpty())
+        target = savedSize.toSize();
+    target.setWidth(qBound(1000, target.width(), qMax(1000, available.width() - 24)));
+    target.setHeight(qBound(620, target.height(), qMax(620, available.height() - 24)));
+    window->setMinimumSize(1000, 620);
+    window->resize(target);
+    window->move(available.center() - QPoint(target.width() / 2, target.height() / 2));
+    if (APPLICATION->settings()->get(QStringLiteral("BerryWindowMaximized")).toBool())
+        window->showMaximized();
+
+    QObject::connect(qApp, &QApplication::aboutToQuit, window, [window] {
+        auto* settings = APPLICATION->settings();
+        settings->set(QStringLiteral("BerryWindowMaximized"), window->isMaximized());
+        if (!window->isMaximized() && !window->isMinimized())
+            settings->set(QStringLiteral("BerryWindowSize"), window->size());
+    });
 
     if (!g_tray && QSystemTrayIcon::isSystemTrayAvailable()) {
         qApp->setQuitOnLastWindowClosed(false);

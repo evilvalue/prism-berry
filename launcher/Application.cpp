@@ -720,6 +720,12 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
         m_settings->registerSetting("Language", QString());
         m_settings->registerSetting("UseSystemLocale", false);
 
+#ifdef BERRY_SOLO
+        // Pixel window geometry, remembered between launches.
+        m_settings->registerSetting("BerryWindowSize", QSize());
+        m_settings->registerSetting("BerryWindowMaximized", false);
+#endif
+
         // Console
         m_settings->registerSetting("ShowConsole", false);
         m_settings->registerSetting("AutoCloseConsole", false);
@@ -1237,6 +1243,24 @@ Application::Application(int& argc, char** argv) : QApplication(argc, argv)
 
 bool Application::createSetupWizard()
 {
+#ifdef BERRY_SOLO
+    // BerryTrip has its own pixel UI, its own settings page and an offline
+    // account, so Prism's first-run wizard (language / Java / theme / pastebin
+    // / login) must never appear. Seed the values it would have written.
+    if (settings()->get("Language").toString().isEmpty()) {
+        settings()->set("UseSystemLocale", true);
+        QString systemLanguage = QLocale::system().name();
+        if (systemLanguage.isEmpty())
+            systemLanguage = QStringLiteral("en_US");
+        settings()->set("Language", systemLanguage);
+        if (m_translations)
+            m_translations->selectLanguage(systemLanguage);
+    }
+    settings()->set("IgnoreJavaWizard", true);
+    settings()->set("AutomaticJavaDownload", true);
+    settings()->set("UserAskedAboutAutomaticJavaDownload", true);
+    return false;
+#endif
     bool javaRequired = [this]() {
         if (BuildConfig.JAVA_DOWNLOADER_ENABLED && settings()->get("AutomaticJavaDownload").toBool()) {
             return false;

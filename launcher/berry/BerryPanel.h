@@ -13,6 +13,7 @@
 #include <QWidget>
 
 class QButtonGroup;
+class QComboBox;
 class QCheckBox;
 class QFrame;
 class QLabel;
@@ -21,6 +22,7 @@ class QListWidget;
 class QMainWindow;
 class QPaintEvent;
 class QProgressBar;
+class QResizeEvent;
 class QPushButton;
 class QSpinBox;
 class QStackedWidget;
@@ -48,6 +50,7 @@ class Panel : public QWidget {
 
    protected:
     void paintEvent(QPaintEvent* event) override;
+    void resizeEvent(QResizeEvent* event) override;
 
    private:
     QWidget* buildHome();
@@ -73,6 +76,9 @@ class Panel : public QWidget {
     void tryAutoInstall();
     bool signedIn() const;
     void goToPage(int index);
+    void refreshLanguages(bool allowDownload);
+    void showToast(const QString& text);
+    void repositionToast();
 
     void refreshSkins();
     void pickSkin();
@@ -112,6 +118,10 @@ class Panel : public QWidget {
 
     QSpinBox* m_memory = nullptr;
     QLineEdit* m_javaPath = nullptr;
+    QComboBox* m_language = nullptr;
+    QLabel* m_languageHint = nullptr;
+    QLabel* m_toast = nullptr;
+    QTimer* m_toastTimer = nullptr;
     QLabel* m_settingsStatus = nullptr;
     QCheckBox* m_packs = nullptr;
     QCheckBox* m_shaders = nullptr;
