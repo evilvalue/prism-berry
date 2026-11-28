@@ -163,6 +163,32 @@ class PopupFilter : public QObject {
     Panel* m_panel;
 };
 
+/// Keeps Prism's own chrome (menu bar, toolbars, docks, status bar) hidden when
+/// MainWindow or a theme tries to reshow it. Widgets are hidden, never deleted:
+/// MainWindow still holds pointers to them.
+class PrismChromeFilter : public QObject {
+   public:
+    PrismChromeFilter(QWidget* window, QObject* parent) : QObject(parent), m_window(window) {}
+
+   protected:
+    bool eventFilter(QObject* watched, QEvent* event) override
+    {
+        if (event->type() == QEvent::Show) {
+            auto* widget = qobject_cast<QWidget*>(watched);
+            if (widget && widget != m_window && widget->isWindow() == false &&
+                (qobject_cast<QToolBar*>(widget) || qobject_cast<QDockWidget*>(widget) || qobject_cast<QStatusBar*>(widget) ||
+                 qobject_cast<QMenuBar*>(widget))) {
+                widget->hide();
+                return true;
+            }
+        }
+        return QObject::eventFilter(watched, event);
+    }
+
+   private:
+    QWidget* m_window;
+};
+
 /// The close button hides the launcher instead of quitting it, so a running
 /// download or a just-launched game is not cut off. The tray icon brings it back.
 class TrayFilter : public QObject {
@@ -2910,14 +2936,18 @@ void installSoloUi(QMainWindow* window)
     window->setAttribute(Qt::WA_TranslucentBackground, false);
 #endif
 
-    if (auto* bar = window->menuBar()) { bar->hide(); bar->setVisible(false); }
-    if (auto* bar = window->statusBar()) { bar->hide(); bar->setVisible(false); }
-    for (auto* bar : window->findChildren<QToolBar*>()) { bar->hide(); bar->setVisible(false); bar->deleteLater(); }
-    for (auto* dock : window->findChildren<QDockWidget*>()) { dock->hide(); dock->setVisible(false); dock->deleteLater(); }
-    if (auto* central = window->centralWidget()) { central->hide(); central->setVisible(false); }
-    // Any Prism widget that tries to reshow (toolbars, docks, status) stays hidden.
-    window->setStatusBar(nullptr);
-    window->menuBar()->hide();
+    // Only hide the Prism chrome. Deleting these widgets is not an option:
+    // MainWindow keeps raw pointers to its toolbars and crashes on next use.
+    if (auto* bar = window->menuBar())
+        bar->hide();
+    if (auto* bar = window->statusBar())
+        bar->hide();
+    for (auto* bar : window->findChildren<QToolBar*>())
+        bar->hide();
+    for (auto* dock : window->findChildren<QDockWidget*>())
+        dock->hide();
+    if (auto* central = window->centralWidget())
+        central->hide();
 
     auto* panel = new Panel(window);
     panel->setGeometry(window->rect());
@@ -2928,8 +2958,7 @@ void installSoloUi(QMainWindow* window)
         g_filtersInstalled = true;
         window->installEventFilter(new OverlayFilter(panel, window));
         qApp->installEventFilter(new PopupFilter(panel, qApp));
-        // Kill Prism leftovers that appear later (plain-text console, etc.)
-        QObject::connect(window, &QWidget::customContextMenuRequested, window, [] {});
+        window->installEventFilter(new PrismChromeFilter(window, window));
     }
     QTimer::singleShot(0, window, [panel] { panel->setGeometry(panel->parentWidget()->rect()); });
 
