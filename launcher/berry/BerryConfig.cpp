@@ -22,8 +22,12 @@ constexpr auto InstanceId = "BerryTrip";
 constexpr auto ServerHost = "135.181.126.167";
 constexpr quint16 ServerPort = 25737;
 constexpr auto PackBaseUrl = "https://evilvalue.github.io/berry/";
-constexpr auto AuthApiUrl = "http://135.181.126.167:25712";
-constexpr auto LauncherVersion = "0.7.12";
+// The mod serving this API runs inside the game server, which has no shell to
+// terminate TLS itself, so the launcher talks HTTPS to a small relay instead.
+// The plain-HTTP origin stays as a last-resort fallback.
+constexpr auto AuthApiUrl = "https://berrytrip-auth-relay-6lacmy-preview.freebuff.site";
+constexpr auto AuthApiDirectUrl = "http://135.181.126.167:25712";
+constexpr auto LauncherVersion = "0.7.13";
 }  // namespace
 
 QString Config::version()
@@ -59,6 +63,11 @@ QString Config::serverAddress()
 QString Config::authApi()
 {
     return QString::fromLatin1(AuthApiUrl);
+}
+
+QString Config::authApiDirect()
+{
+    return QString::fromLatin1(AuthApiDirectUrl);
 }
 
 QUrl Config::packIndexUrl()

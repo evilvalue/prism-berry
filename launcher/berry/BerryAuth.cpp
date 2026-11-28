@@ -124,20 +124,38 @@ void TelegramAuth::start(const QString& nick)
     requestLink(clean);
 }
 
+void TelegramAuth::postAuth(const QString& path, const QJsonObject& body,
+                            const std::function<void(int, const QByteArray&, const QString&)>& done, bool direct)
+{
+    const QString base = direct ? Config::authApiDirect() : Config::authApi();
+    QNetworkRequest request(QUrl(base + path));
+    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json; charset=utf-8"));
+    request.setTransferTimeout(12000);
+
+    auto* reply = APPLICATION->network()->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, path, body, done, direct] {
+        const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        const QByteArray data = stripBom(reply->readAll());
+        const QString netError = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
+        reply->deleteLater();
+
+        // A dead relay must not lock players out of the server: retry against
+        // the origin once, and say plainly that this hop is not encrypted.
+        if (!direct && code == 0) {
+            emit message(tr("HTTPS-релей недоступен — пробую напрямую, без шифрования."), true);
+            postAuth(path, body, done, true);
+            return;
+        }
+        done(code, data, netError);
+    });
+}
+
 void TelegramAuth::requestLink(const QString& nick)
 {
     m_busy = true;
 
-    QNetworkRequest request(QUrl(Config::authApi() + QStringLiteral("/auth/link")));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json; charset=utf-8"));
-    request.setTransferTimeout(12000);
-
-    auto* reply = APPLICATION->network()->post(request, QJsonDocument(QJsonObject{ { "nick", nick } }).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, nick] {
-        const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray body = stripBom(reply->readAll());
-        const QString netError = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
-        reply->deleteLater();
+    postAuth(QStringLiteral("/auth/link"), QJsonObject{ { "nick", nick } },
+             [this, nick](int code, const QByteArray& body, const QString& netError) {
         m_busy = false;
 
         if (!netError.isEmpty() && code == 0) {
@@ -203,24 +221,16 @@ void TelegramAuth::poll()
 
     m_busy = true;
 
-    QNetworkRequest request(QUrl(Config::authApi() + QStringLiteral("/auth/status")));
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json; charset=utf-8"));
-    request.setTransferTimeout(12000);
-
-    const QJsonObject body{ { "id", m_pendingId }, { "secret", m_pendingSecret } };
-    auto* reply = APPLICATION->network()->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply] {
-        const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        const QByteArray body = stripBom(reply->readAll());
-        const bool networkDown = reply->error() != QNetworkReply::NoError && code == 0;
-        reply->deleteLater();
+    const QJsonObject payload{ { "id", m_pendingId }, { "secret", m_pendingSecret } };
+    postAuth(QStringLiteral("/auth/status"), payload,
+             [this](int code, const QByteArray& data, const QString&) {
         m_busy = false;
 
         // A blink of the network must not kill a still valid link.
-        if (networkDown)
+        if (code == 0)
             return;
 
-        const auto json = QJsonDocument::fromJson(body).object();
+        const auto json = QJsonDocument::fromJson(data).object();
         const QString nick = json.value(QStringLiteral("nick")).toString();
         const QString status = json.value(QStringLiteral("status")).toString();
 

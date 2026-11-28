@@ -9,9 +9,13 @@
 
 #pragma once
 
+#include <QByteArray>
 #include <QObject>
 #include <QString>
 
+#include <functional>
+
+class QJsonObject;
 class QNetworkReply;
 
 namespace berry {
@@ -62,7 +66,10 @@ class TelegramAuth : public QObject {
    private:
     void requestLink(const QString& nick);
     void requestStatus();
-    void handleJson(QNetworkReply* reply, int httpStatus, const QByteArray& body);
+    /// POSTs to the auth API over HTTPS and retries once without TLS when the
+    /// relay itself is unreachable, so a relay outage cannot lock players out.
+    void postAuth(const QString& path, const QJsonObject& body,
+                  const std::function<void(int, const QByteArray&, const QString&)>& done, bool direct = false);
     bool writeToken(const QString& nick, const QString& token);
     void clearPending();
     QString tokenFilePath() const;

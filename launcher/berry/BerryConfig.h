@@ -30,8 +30,10 @@ class Config {
     /// "host:port", the form Minecraft's --server/--quickPlayMultiplayer expects.
     static QString serverAddress();
 
-    /// berryauth server: the Telegram bot issues the login token here.
+    /// berryauth server over HTTPS (relay in front of the mod's HTTP API).
     static QString authApi();
+    /// The same API without TLS, used only when the relay cannot be reached.
+    static QString authApiDirect();
 
     /// packwiz index (HTTPS manifest with a sha256 for every file).
     static QUrl packIndexUrl();
