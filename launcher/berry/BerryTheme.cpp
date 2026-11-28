@@ -229,9 +229,13 @@ void inset(QPainter& painter, const QRect& rect, const QColor& fill, const QColo
 
 QIcon appIcon()
 {
-    QIcon icon(QStringLiteral(":/berry/app-icon.png"));
+    // The .ico carries 16/24/32/48/64/128/256 pixel frames, so Windows picks a
+    // crisp one for the tray, the taskbar and the window instead of resampling.
+    QIcon icon(QStringLiteral(":/berry/app-icon.ico"));
     if (icon.isNull())
-        return QIcon(QStringLiteral(":/berry/berry.png"));
+        icon = QIcon(QStringLiteral(":/berry/app-icon.png"));
+    if (icon.isNull())
+        icon = QIcon(QStringLiteral(":/berry/berry.png"));
     return icon;
 }
 

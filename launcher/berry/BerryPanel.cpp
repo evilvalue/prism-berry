@@ -1195,7 +1195,7 @@ Panel::Panel(QWidget* parent) : QWidget(parent)
     topRow->setSpacing(14);
 
     auto* logo = new QLabel(top);
-    logo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(40, 40, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    logo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(40, 40, Qt::KeepAspectRatio, Qt::FastTransformation));
     logo->setFixedSize(40, 40);
     logo->setScaledContents(true);
     topRow->addWidget(logo, 0, Qt::AlignVCenter);
@@ -1590,7 +1590,7 @@ QWidget* Panel::buildHome()
     auto* titleRow = new QHBoxLayout;
     titleRow->setSpacing(14);
     auto* heroLogo = new QLabel(hero);
-    heroLogo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(56, 56, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    heroLogo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(56, 56, Qt::KeepAspectRatio, Qt::FastTransformation));
     heroLogo->setFixedSize(56, 56);
     heroLogo->setScaledContents(true);
     titleRow->addWidget(heroLogo, 0, Qt::AlignTop);
@@ -2501,7 +2501,7 @@ QWidget* Panel::buildAbout()
     headRow->setContentsMargins(18, 14, 18, 18);
     headRow->setSpacing(18);
     auto* logo = new QLabel(head);
-    logo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(72, 72, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    logo->setPixmap(QPixmap(QStringLiteral(":/berry/app-icon.png")).scaled(72, 72, Qt::KeepAspectRatio, Qt::FastTransformation));
     logo->setFixedSize(72, 72);
     logo->setScaledContents(true);
     headRow->addWidget(logo, 0, Qt::AlignVCenter);
