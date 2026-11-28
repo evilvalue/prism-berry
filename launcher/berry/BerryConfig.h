@@ -32,8 +32,12 @@ class Config {
 
     /// berryauth server over HTTPS (relay in front of the mod's HTTP API).
     static QString authApi();
-    /// The same API without TLS, used only when the relay cannot be reached.
+    /// The same API without TLS, used only when nothing else answers.
     static QString authApiDirect();
+    /// The mod's own HTTPS listener (self-signed, pinned by us).
+    static QString authApiTls();
+    /// PEM of the one certificate we accept from authApiTls().
+    static QByteArray pinnedCertificate();
 
     /// packwiz index (HTTPS manifest with a sha256 for every file).
     static QUrl packIndexUrl();

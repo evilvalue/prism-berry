@@ -48,6 +48,9 @@ class PackSync : public QObject {
         Kind kind = Kind::Blob;
         /// Index entry this job finishes, used for progress accounting.
         QString entryPath;
+        /// True when the pack's copy is written next to an edited player file
+        /// ("config/x.toml" -> "config/x.toml.new") instead of over it.
+        bool sidecar = false;
         /// File to write, relative to the game root.
         QString diskPath;
         QUrl url;
@@ -84,7 +87,8 @@ class PackSync : public QObject {
     void fetchIndex();
     void parseIndex(const QByteArray& data);
     void scanLocalFiles();
-    static Plan buildPlan(const QString& root, const QHash<QString, Entry>& entries);
+    static Plan buildPlan(const QString& root, const QHash<QString, Entry>& entries,
+                          const QHash<QString, QByteArray>& state);
     void enqueue(const Job& job);
     void startNextDownloads();
     void startDownload(const Job& job);
@@ -94,12 +98,19 @@ class PackSync : public QObject {
     void completeEntry(const QString& entryPath);
     void maybeFinish();
     void fail(const QString& message);
+    /// Pack hashes applied on the last sync, in .berry-sync.json. Knowing what
+    /// the pack shipped last time is what tells an untouched config apart from
+    /// one the player edited.
+    void loadState();
+    void saveState();
 
     static bool readMetafile(const QString& localPath, const QString& metafilePath, Job* payload, QString* error);
     static QCryptographicHash::Algorithm algorithmFor(const QString& format);
     static QByteArray hashFile(const QString& path, const QString& format);
 
     QHash<QString, Entry> m_entries;
+    QHash<QString, QByteArray> m_state;
+    QString m_statePath;
     QQueue<Job> m_queue;
     QSet<QNetworkReply*> m_replies;
     QSet<QString> m_queuedPaths;

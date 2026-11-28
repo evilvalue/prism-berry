@@ -14,6 +14,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QFutureWatcher>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -108,6 +110,7 @@ void PackSync::start()
     m_pendingRetries = 0;
     m_running = true;
 
+    loadState();
     fetchIndex();
 }
 
@@ -217,6 +220,7 @@ void PackSync::scanLocalFiles()
 {
     const QString root = m_root;
     const auto entries = m_entries;
+    const auto state = m_state;
 
     auto* watcher = new QFutureWatcher<Plan>(this);
     connect(watcher, &QFutureWatcher<Plan>::finished, this, [this, watcher] {
@@ -238,10 +242,11 @@ void PackSync::scanLocalFiles()
 
     // Hashing the whole game folder and every .pw.toml used to run on the UI
     // thread, which froze the window for seconds on a large pack.
-    watcher->setFuture(QtConcurrent::run([root, entries] { return buildPlan(root, entries); }));
+    watcher->setFuture(QtConcurrent::run([root, entries, state] { return buildPlan(root, entries, state); }));
 }
 
-PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Entry>& entries)
+PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Entry>& entries,
+                                   const QHash<QString, QByteArray>& state)
 {
     Plan plan;
     QSet<QString> queued;
@@ -259,7 +264,40 @@ PackSync::Plan PackSync::buildPlan(const QString& root, const QHash<QString, Ent
 
         const QString path = QDir(root).filePath(it.key());
         if (isPlayerOwnedPath(it.key()) && QFileInfo::exists(path)) {
+            const QByteArray local = hashFile(path, it->hashFormat);
+            // Still what the pack installed last time, so the player never
+            // touched it: the pack is allowed to update it in place.
+            const auto previous = state.constFind(it.key());
+            const bool untouched = previous != state.cend() && previous.value() == local;
             plan.satisfied.append(it.key());
+
+            if (local != it->hash) {
+                if (untouched) {
+                    Job job;
+                    job.kind = Job::Kind::Blob;
+                    job.entryPath = it.key();
+                    job.diskPath = it.key();
+                    job.url = Config::packFileUrl(it.key());
+                    job.hashFormat = it->hashFormat;
+                    job.hash = it->hash;
+                    add(job);
+                } else {
+                    // Edited by the player: keep their file and drop the pack's
+                    // version next to it as "<file>.new".
+                    const QString sidecarPath = it.key() + QStringLiteral(".new");
+                    const QString sidecarFull = QDir(root).filePath(sidecarPath);
+                    if (!QFileInfo::exists(sidecarFull) || hashFile(sidecarFull, it->hashFormat) != it->hash) {
+                        Job job;
+                        job.kind = Job::Kind::Blob;
+                        job.sidecar = true;
+                        job.diskPath = sidecarPath;
+                        job.url = Config::packFileUrl(it.key());
+                        job.hashFormat = it->hashFormat;
+                        job.hash = it->hash;
+                        add(job);
+                    }
+                }
+            }
             continue;
         }
         if (hashFile(path, it->hashFormat) == it->hash) {
@@ -515,8 +553,10 @@ void PackSync::maybeFinish()
         return;
 
     m_running = false;
-    if (m_errors.isEmpty())
+    if (m_errors.isEmpty()) {
+        saveState();
         emit finished(true, QString());
+    }
     else
         emit finished(false, m_errors.join(QLatin1Char('\n')));
 }
@@ -591,6 +631,35 @@ QByteArray PackSync::hashFile(const QString& path, const QString& format)
     if (!hash.addData(&file))
         return {};
     return hash.result();
+}
+
+void PackSync::loadState()
+{
+    m_state.clear();
+    m_statePath = QDir(m_root).filePath(QStringLiteral(".berry-sync.json"));
+    QFile file(m_statePath);
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    const auto json = QJsonDocument::fromJson(file.readAll()).object();
+    const auto files = json.value(QStringLiteral("files")).toObject();
+    for (auto it = files.begin(); it != files.end(); ++it)
+        m_state.insert(it.key(), QByteArray::fromHex(it.value().toString().toLatin1()));
+}
+
+void PackSync::saveState()
+{
+    QJsonObject files;
+    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
+        files.insert(it.key(), QString::fromLatin1(it->hash.toHex()));
+    QJsonObject root;
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("files"), files);
+
+    QSaveFile file(m_statePath);
+    if (!file.open(QIODevice::WriteOnly))
+        return;
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
+    file.commit();
 }
 
 }  // namespace berry

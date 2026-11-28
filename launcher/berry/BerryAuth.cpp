@@ -21,6 +21,8 @@
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QSslCertificate>
+#include <QSslConfiguration>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QSaveFile>
@@ -125,25 +127,39 @@ void TelegramAuth::start(const QString& nick)
 }
 
 void TelegramAuth::postAuth(const QString& path, const QJsonObject& body,
-                            const std::function<void(int, const QByteArray&, const QString&)>& done, bool direct)
+                            const std::function<void(int, const QByteArray&, const QString&)>& done, int stage)
 {
-    const QString base = direct ? Config::authApiDirect() : Config::authApi();
+    const QString base = stage == 0 ? Config::authApiTls()
+                                      : (stage == 1 ? Config::authApi() : Config::authApiDirect());
     QNetworkRequest request(QUrl(base + path));
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json; charset=utf-8"));
     request.setTransferTimeout(12000);
 
+    if (stage == 0) {
+        const QSslCertificate pinned(Config::pinnedCertificate(), QSsl::Pem);
+        if (!pinned.isNull()) {
+            QSslConfiguration ssl = QSslConfiguration::defaultConfiguration();
+            // Trust nothing but our own certificate: a proxy on the way cannot
+            // present its own and read the login secret.
+            ssl.setCaCertificates({ pinned });
+            ssl.setPeerVerifyMode(QSslSocket::VerifyPeer);
+            request.setSslConfiguration(ssl);
+        }
+    }
+
     auto* reply = APPLICATION->network()->post(request, QJsonDocument(body).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, path, body, done, direct] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, path, body, done, stage] {
         const int code = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         const QByteArray data = stripBom(reply->readAll());
         const QString netError = reply->error() == QNetworkReply::NoError ? QString() : reply->errorString();
         reply->deleteLater();
 
-        // A dead relay must not lock players out of the server: retry against
-        // the origin once, and say plainly that this hop is not encrypted.
-        if (!direct && code == 0) {
-            emit message(tr("HTTPS-релей недоступен — пробую напрямую, без шифрования."), true);
-            postAuth(path, body, done, true);
+        // A dead hop must not lock players out: fall to the next transport, and
+        // say plainly when the login ends up unencrypted.
+        if (code == 0 && stage < 2) {
+            if (stage == 1)
+                emit message(tr("HTTPS недоступен — пробую напрямую, без шифрования."), true);
+            postAuth(path, body, done, stage + 1);
             return;
         }
         done(code, data, netError);

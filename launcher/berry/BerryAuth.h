@@ -68,8 +68,10 @@ class TelegramAuth : public QObject {
     void requestStatus();
     /// POSTs to the auth API over HTTPS and retries once without TLS when the
     /// relay itself is unreachable, so a relay outage cannot lock players out.
+    /// stage 0 = pinned HTTPS, 1 = relay, 2 = bare HTTP. A dead stage falls
+    /// through to the next one, so a broken hop cannot lock players out.
     void postAuth(const QString& path, const QJsonObject& body,
-                  const std::function<void(int, const QByteArray&, const QString&)>& done, bool direct = false);
+                  const std::function<void(int, const QByteArray&, const QString&)>& done, int stage = 0);
     bool writeToken(const QString& nick, const QString& token);
     void clearPending();
     QString tokenFilePath() const;
